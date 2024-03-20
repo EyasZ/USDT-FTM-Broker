@@ -29,6 +29,7 @@ class Token:
         self.id, self.chain_id = data
         self.score = score
         self.last_price = last_price  # Now accepts last_price during initialization
+        self.strikes = 0
 
     def __str__(self) -> str:
         return f"Token(id={self.id}, chain_id={self.chain_id}, score={self.score}, last_price={self.last_price})"
@@ -61,13 +62,14 @@ class TokenBinaryTree:
             node.right = self._insert(node.right, token)
         return node
 
-    def update_token(self, token_id, new_score, current_price):
+    def update_token(self, token_id, new_score, current_price, strikes):
         """Updates a token's score and repositions it in the binary tree to reflect the new score."""
         token = self.find_token(token_id)
         if token:
             self.root = self._remove(self.root, token)  # Remove the token from its current position.
             token.score = new_score  # Update the score.
             token.last_price = current_price  # Update the last known price.
+            token.strikes = strikes
             self.root = self._insert(self.root, token)  # Re-insert the token in its new position.
         else:
             logging.warning(f"Token ID {token_id} not found for update.")
@@ -126,3 +128,4 @@ class TokenBinaryTree:
         sorted_tokens = self.get_sorted_tokens()
         tokens_info = [(token.id, token.score) for token in sorted_tokens]
         logging.info("Current state of the tree (Token ID, Score): {}".format(tokens_info))
+        return sorted_tokens

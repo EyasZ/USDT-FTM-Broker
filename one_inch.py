@@ -64,3 +64,30 @@ class OneInchAPI:
             return response.text
         except Exception:
             return "Error fetching chain pairs"
+
+    def swap_tokens(self, from_address, private_key, from_token_address, to_token_address, amount):
+
+        web3_instance = Web3Instance.get_instance().web3
+
+        # 1inch API endpoint for swap
+        api_url = "https://api.1inch.io/v4.0/1/swap"
+
+        # Prepare swap request
+        params = {
+            'fromTokenAddress': from_token_address,
+            'toTokenAddress': to_token_address,
+            'amount': web3_instance.toWei(amount, 'ether'),
+            'fromAddress': from_address,
+            'slippage': 1,
+        }
+
+        response = requests.get(api_url, params=params).json()
+
+        # Extracting transaction data
+        tx = response['tx']
+
+        # Sign and send the transaction
+        signed_tx = web3_instance.eth.account.sign_transaction(tx, private_key=private_key)
+        tx_hash = web3_instance.eth.send_raw_transaction(signed_tx.rawTransaction)
+
+        return tx_hash.hex()

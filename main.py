@@ -1,8 +1,9 @@
 import json
+import threading
 import time
 import logging
 from threading import Thread
-from one_inch import OneInchAPI  # Assuming this is correctly implemented elsewhere
+from one_inch import OneInchAPI  # Ensure this is correctly implemented
 from objects import Chain, Token, TokenBinaryTree
 import sys
 
@@ -16,6 +17,8 @@ class TradingBot:
         self.configure_logging()
         self.chains = {name: Chain((chain_id, '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 'ORACLE_ADDRESS', name)) for name, chain_id in self.chain_ids.items()}
         self.tokens_per_chain = {name: TokenBinaryTree() for name in self.chain_ids}
+        self.trading_dict = {}  # token_id: score_at_purchase
+        self.assets = {}
 
     def configure_logging(self):
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='trading_bot.log', filemode='w')
@@ -27,36 +30,19 @@ class TradingBot:
         self.logging = logging
 
     def chain_handler(self, chain_name, chain_id):
-        counter = 1
+        counter = 0
         while True:
-            self.logging.info(f"Processing {chain_name} with chain ID {chain_id}")
-            logging.info(f"Iteration counter: {counter}")
-            self.evaluate_tokens(chain_name, chain_id)
             counter += 1
-            self.tokens_per_chain[chain_name].log_tree()  # Log the current state of the tree
+            self.logging.info(f"Processing {chain_name} with chain ID {chain_id}")
+            self.logging.info(f"Iteration counter: {counter}")
+            if counter == 1:
+                self.initialize_tokens(chain_name, chain_id)
+                my_thread = threading.Thread(self.assets)
+            self.update_token_scores(chain_name, chain_id)
+
             time.sleep(self.interval)
 
-    def calculate_adjustment_factor(self, price_difference, last_price):
-        """
-        Calculates the adjustment factor for a token's score based on the price difference and last price.
-
-        :param price_difference: The difference between the current price and the last recorded price.
-        :param last_price: The last recorded price of the token.
-        :return: A calculated adjustment factor.
-        """
-        if last_price == 0:
-            return 0  # Avoid division by zero if last_price is not initialized.
-        # Example calculation: adjust score based on percentage change, magnified by a factor (e.g., 10).
-        adjustment_factor = abs(price_difference / last_price) * 100
-        bonus = 0
-        if price_difference <= 0:
-            if price_difference < 0:
-                bonus = 1
-            return adjustment_factor + bonus
-        else:
-            return -1 * adjustment_factor
-
-    def evaluate_tokens(self, chain_name, chain_id):
+    def initialize_tokens(self, chain_name, chain_id):
         raw_tokens = json.loads(self.one_inch_api.get_chain_pairs(chain_id))
         for token_id, token_info in raw_tokens.items():
             if token_id == '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee':  # Skip native currency
@@ -68,59 +54,88 @@ class TradingBot:
                 time.sleep(0.5)
                 if current_price_info and 'price' in current_price_info:
                     current_price = int(current_price_info['price'])  # Ensure float for accurate calculations
-                    # Fetch and calculate the initial score based on market cap for new tokens
                     market_cap = self.get_market_cap(token_id, chain_id)
                     initial_score = self.calculate_initial_score(market_cap)
-                    # Initialize a new token with the current price as its last price
                     token = Token((token_id, chain_id), initial_score, current_price)
                     self.tokens_per_chain[chain_name].insert_token(token)  # Insert new token into the tree
                     self.logging.info(f"Inserted new token {token_id} with initial score {initial_score}.")
-                else:
+
+    def update_token_scores(self, chain_name, chain_id):
+        for token_id, token in self.tokens_per_chain[chain_name].tokens_map.items():
+            current_price_info = self.one_inch_api.get_swap_rate(token_id, network=chain_id)
+            time.sleep(0.5)
+            if current_price_info and 'price' in current_price_info:
+                current_price = int(current_price_info['price'])
+                if not token.last_price:
+                    self.logging.error(f"last price was not updated correctly for token {token.id}")
                     continue
-            else:
-                # Calculate price difference and adjust token score
-                current_price_info = self.one_inch_api.get_swap_rate(token_id, network=chain_id)
-                time.sleep(0.5)
-                if current_price_info and 'price' in current_price_info:
-                    current_price = int(current_price_info['price'])
-                else:
-                    continue
-                if not token.last_price or token.last_price == 0:
-                    logging.error(f"last price was not updated correctly for token {token.id}")
                 price_difference = current_price - token.last_price
+                strikes = token.strikes
+                if not price_difference < 0:
+                    strikes += 1
+                else:
+                    strikes = 0
+                if token.id in self.trading_dict and strikes > 2 or  token.score < 0:
+                    self.trading_dict.pop(token.id)
+                elif token.score > 3 and not token.id in self.trading_dict:
+                    self.trading_dict[token.id] = token.score
+
+
                 adjustment_factor = self.calculate_adjustment_factor(price_difference, token.last_price)
-                new_score = token.score + adjustment_factor  # Ensure score doesn't go below 0
-                self.tokens_per_chain[chain_name].update_token(token.id, new_score,
-                                                               current_price)  # Update token in the tree
-                self.logging.info(
-                    f"Updated token {token_id} with new score {new_score}, price difference {price_difference}.")
+                new_score = token.score + adjustment_factor
+                self.tokens_per_chain[chain_name].update_token(token.id, new_score, current_price, strikes)
+                self.logging.info(f"Updated token {token_id} with new score {new_score}, price difference {price_difference}.")
+
+    def manage_trading_dict(self):
+        while True:
+            # This loop would contain logic to manage the trading dictionary
+            time.sleep(self.interval)
+
+    def swap_token_for_native(self, token_id, amount):
+        self.logging.info(f"Dummy swap {token_id} for native currency with amount {amount}")
+
+    def swap_native_for_token(self, token_id, amount):
+        self.logging.info(f"Dummy swap native currency for {token_id} with amount {amount}")
+
+    def trade(self, assets):
+
+
+    def calculate_adjustment_factor(self, price_difference, last_price):
+        """
+        Calculates the adjustment factor for a token's score based on the price difference and last price.
+        """
+        if last_price == 0:
+            return 0  # Avoid division by zero if last_price is not initialized.
+        adjustment_factor = abs(price_difference / last_price) * 100
+        adjustment_factor = adjustment_factor % 10 + int(adjustment_factor / 10)
+        bonus = 0
+        if price_difference <= 0:
+            if price_difference < 0:
+                bonus = 1
+            return adjustment_factor + bonus
+        else:
+            return -1 * adjustment_factor
 
     def main_loop(self):
         for chain_name, chain_id in self.chain_ids.items():
             t = Thread(target=self.chain_handler, args=(chain_name, chain_id))
             t.start()
-        # Threads are deliberately not joined to keep the script running indefinitely.
 
-        # Placeholder methods for market cap retrieval and initial score calculation
+        trading_dict_thread = Thread(target=self.manage_trading_dict, self.assets)
+        trading_dict_thread.start()
 
     def get_market_cap(self, token_id, chain_id):
-        # Implement the logic to retrieve market cap information for the token
+        # Your existing implementation
         return 1000000  # Example market cap value
 
     def calculate_initial_score(self, market_cap):
-        # Implement the logic to calculate the initial score based on market cap
+        # Your existing implementation
         return market_cap / 1000000  # Example calculation
 
 if __name__ == "__main__":
     chain_ids = {
-        # "Ethereum": 1,
-        # "BNB Chain": 56,
-        # "Polygon": 137,
-        "Fantom": 250
+        "BNB Chain": 56,
     }
     bot = TradingBot(chain_ids=chain_ids, api_key="QA15qLIBp3OykOei5tLSslzOgjCxBS3t")
-    sys.setrecursionlimit(3000)  # Adjusting recursion limit if necessary for deep tree operations
+    sys.setrecursionlimit(3000)
     bot.main_loop()
-
-
-
