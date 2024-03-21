@@ -1,15 +1,50 @@
 from decimal import Decimal
 import requests
 
+from quick_node import Web3Instance
+
 
 class OneInchAPI:
+
     def __init__(self, api_key: str):
         """
         Initializes the OneInchAPI with a given API key.
 
         :param api_key: Your 1inch API key.
         """
+        self.wallet_address = "0x9055192d0673CE6034b302a9921A3E071A220553"
         self.api_key = api_key
+
+    def check_wallet_assets(self, wallet_address, chain_id='1'):
+        """Fetches assets for a given wallet address using the 1inch API.
+
+        Args:
+            wallet_address (str): The wallet address to check.
+            chain_id (str): The chain ID. Defaults to '1' (Ethereum).
+
+        Returns:
+            dict: A dictionary containing the assets in the wallet.
+        """
+        method = "get"
+        apiUrl = f"https://api.1inch.dev/balance/v1.2/56/balances/{self.wallet_address}"
+        requestOptions = {
+            "headers": {
+                "Authorization": f"Bearer {self.api_key}"
+            },
+            "body": {},
+            "params": {}
+        }
+
+        # Prepare request components
+        headers = requestOptions.get("headers", {})
+        body = requestOptions.get("body", {})
+        params = requestOptions.get("params", {})
+
+        response = requests.get(apiUrl, headers=headers, params=params)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise Exception(f"Failed to fetch wallet assets: {response.text}")
 
     def __str__(self) -> str:
         return f"OneInchAPI(api_key={self.api_key})"
@@ -65,9 +100,9 @@ class OneInchAPI:
         except Exception:
             return "Error fetching chain pairs"
 
-    def swap_tokens(self, from_address, private_key, from_token_address, to_token_address, amount):
+    def swap_tokens(self, from_address, private_key, from_token_address, to_token_address, amount, end_point):
 
-        web3_instance = Web3Instance.get_instance().web3
+        web3_instance = Web3Instance.get_instance(end_point).web3
 
         # 1inch API endpoint for swap
         api_url = "https://api.1inch.io/v4.0/1/swap"

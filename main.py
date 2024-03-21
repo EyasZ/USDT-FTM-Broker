@@ -19,6 +19,9 @@ class TradingBot:
         self.tokens_per_chain = {name: TokenBinaryTree() for name in self.chain_ids}
         self.trading_dict = {}  # token_id: score_at_purchase
         self.assets = {}
+        self.counter = 0
+        self.wallet_address = '0x9055192d0673CE6034b302a9921A3E071A220553'
+
 
     def configure_logging(self):
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='trading_bot.log', filemode='w')
@@ -30,14 +33,13 @@ class TradingBot:
         self.logging = logging
 
     def chain_handler(self, chain_name, chain_id):
-        counter = 0
         while True:
-            counter += 1
+            self.counter += 1
             self.logging.info(f"Processing {chain_name} with chain ID {chain_id}")
-            self.logging.info(f"Iteration counter: {counter}")
-            if counter == 1:
+            self.logging.info(f"Iteration self.counter: {self.counter}")
+            if self.counter == 1:
                 self.initialize_tokens(chain_name, chain_id)
-                my_thread = threading.Thread(self.assets)
+                my_thread = threading.Thread(target=self.manage_trading_dict, args=self.assets)
             self.update_token_scores(chain_name, chain_id)
 
             time.sleep(self.interval)
@@ -75,10 +77,11 @@ class TradingBot:
                     strikes += 1
                 else:
                     strikes = 0
-                if token.id in self.trading_dict and strikes > 2 or  token.score < 0:
+                if token.id in self.trading_dict and strikes > 2 or token.id in self.trading_dict and token.score < 0:
                     self.trading_dict.pop(token.id)
-                elif token.score > 3 and not token.id in self.trading_dict:
+                elif token.score > 3 and token.id not in self.trading_dict:
                     self.trading_dict[token.id] = token.score
+                
 
 
                 adjustment_factor = self.calculate_adjustment_factor(price_difference, token.last_price)
@@ -87,9 +90,22 @@ class TradingBot:
                 self.logging.info(f"Updated token {token_id} with new score {new_score}, price difference {price_difference}.")
 
     def manage_trading_dict(self):
-        while True:
-            # This loop would contain logic to manage the trading dictionary
-            time.sleep(self.interval)
+        assets = check_assets()
+        if len assets == 1:
+
+        if len(self.trading_dict) > 0 and len(self.assets) == 1:
+
+
+    def bridge(self, token_id, amount):
+        self.logging.info(f"Dummy swap {token_id} for native currency with amount {amount}")
+
+    def check_assets(self, token_id, amount):
+        try:
+            assets = OneInchAPI.check_wallet_assets(self.wallet_address)
+            print("Assets in wallet:", assets)
+        except Exception as e:
+            print(e)
+
 
     def swap_token_for_native(self, token_id, amount):
         self.logging.info(f"Dummy swap {token_id} for native currency with amount {amount}")
@@ -98,6 +114,7 @@ class TradingBot:
         self.logging.info(f"Dummy swap native currency for {token_id} with amount {amount}")
 
     def trade(self, assets):
+        pass
 
 
     def calculate_adjustment_factor(self, price_difference, last_price):
@@ -121,7 +138,7 @@ class TradingBot:
             t = Thread(target=self.chain_handler, args=(chain_name, chain_id))
             t.start()
 
-        trading_dict_thread = Thread(target=self.manage_trading_dict, self.assets)
+        trading_dict_thread = Thread(target=self.manage_trading_dict, args=(self.assets))
         trading_dict_thread.start()
 
     def get_market_cap(self, token_id, chain_id):
