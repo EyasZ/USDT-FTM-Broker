@@ -18,7 +18,7 @@ class TradingBot:
         self.chains = {name: Chain((chain_id, '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 'ORACLE_ADDRESS', name)) for name, chain_id in self.chain_ids.items()}
         self.tokens_per_chain = {name: TokenBinaryTree() for name in self.chain_ids}
         self.trading_dict = {}  # token_id: score_at_purchase
-        self.assets = {}
+        self.last_pulse = {}
         self.counter = 0
         self.wallet_address = '0x9055192d0673CE6034b302a9921A3E071A220553'
 
@@ -39,7 +39,7 @@ class TradingBot:
             self.logging.info(f"Iteration self.counter: {self.counter}")
             if self.counter == 1:
                 self.initialize_tokens(chain_name, chain_id)
-                my_thread = threading.Thread(target=self.manage_trading_dict, args=self.assets)
+                my_thread = threading.Thread(target=self.manage_trading_dict, args=self.last_pulse)
             self.update_token_scores(chain_name, chain_id)
 
             time.sleep(self.interval)
@@ -72,39 +72,44 @@ class TradingBot:
                     self.logging.error(f"last price was not updated correctly for token {token.id}")
                     continue
                 price_difference = current_price - token.last_price
-                strikes = token.strikes
+                strikes = token.strikes     
+                adjustment_factor = self.calculate_adjustment_factor(price_difference, token.last_price)
+                new_score = token.score + adjustment_factor
+                self.tokens_per_chain[chain_name].update_token(token.id, new_score, current_price, strikes)
                 if not price_difference < 0:
                     strikes += 1
                 else:
                     strikes = 0
                 if token.id in self.trading_dict and strikes > 2 or token.id in self.trading_dict and token.score < 0:
                     self.trading_dict.pop(token.id)
-                elif token.score > 3 and token.id not in self.trading_dict:
+                elif token.score < 3 and token.id not in self.trading_dict:
                     self.trading_dict[token.id] = token.score
-                
-
-
-                adjustment_factor = self.calculate_adjustment_factor(price_difference, token.last_price)
-                new_score = token.score + adjustment_factor
-                self.tokens_per_chain[chain_name].update_token(token.id, new_score, current_price, strikes)
+                self.manage_trading_dict()
                 self.logging.info(f"Updated token {token_id} with new score {new_score}, price difference {price_difference}.")
-
+                
     def manage_trading_dict(self):
-        assets = check_assets()
-        if len assets == 1:
+        last_pulse = self.check_last_pulse()
+        if len(last_pulse) >= 1:
+            if len(self.trading_dict) > 0:
+                for address, score in self.trading_dict.items():
+                    if address not in self.trading_dict and self.trading_dict:
+                        self.swap_native_for_token(address)
+                        self.last_pulse[address] = score
 
-        if len(self.trading_dict) > 0 and len(self.assets) == 1:
+
+
 
 
     def bridge(self, token_id, amount):
         self.logging.info(f"Dummy swap {token_id} for native currency with amount {amount}")
 
-    def check_assets(self, token_id, amount):
+    def check_last_pulse(self):
         try:
-            assets = OneInchAPI.check_wallet_assets(self.wallet_address)
-            print("Assets in wallet:", assets)
+            last_pulse = OneInchAPI.check_wallet_last_pulse(self.wallet_address)
+            return last_pulse
         except Exception as e:
             print(e)
+        return None
 
 
     def swap_token_for_native(self, token_id, amount):
@@ -113,7 +118,7 @@ class TradingBot:
     def swap_native_for_token(self, token_id, amount):
         self.logging.info(f"Dummy swap native currency for {token_id} with amount {amount}")
 
-    def trade(self, assets):
+    def trade(self, last_pulse):
         pass
 
 
@@ -138,7 +143,7 @@ class TradingBot:
             t = Thread(target=self.chain_handler, args=(chain_name, chain_id))
             t.start()
 
-        trading_dict_thread = Thread(target=self.manage_trading_dict, args=(self.assets))
+        trading_dict_thread = Thread(target=self.manage_trading_dict, args=(self.last_pulse))
         trading_dict_thread.start()
 
     def get_market_cap(self, token_id, chain_id):
