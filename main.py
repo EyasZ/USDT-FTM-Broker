@@ -19,7 +19,7 @@ class TradingBot:
         self.tokens_per_chain = {name: TokenBinaryTree() for name in self.chain_ids}
         self.trading_dict = {}  # token_id: score_at_purchase
         self.last_pulse = {}
-        self.counter = 0
+        self.counter = 1
         self.wallet_address = '0x9055192d0673CE6034b302a9921A3E071A220553'
 
 
@@ -34,14 +34,13 @@ class TradingBot:
 
     def chain_handler(self, chain_name, chain_id):
         while True:
-            self.counter += 1
             self.logging.info(f"Processing {chain_name} with chain ID {chain_id}")
             self.logging.info(f"Iteration self.counter: {self.counter}")
-            if self.counter == 1:
-                self.initialize_tokens(chain_name, chain_id)
-                my_thread = threading.Thread(target=self.manage_trading_dict, args=self.last_pulse)
             self.update_token_scores(chain_name, chain_id)
-
+            self.counter += 1
+            if self.counter % 5 == 0:
+                self.initialize_tokens(chain_name, chain_id)
+                self.manage_trading_dict(chain_name, chain_id)
             time.sleep(self.interval)
 
     def initialize_tokens(self, chain_name, chain_id):
@@ -87,8 +86,8 @@ class TradingBot:
                 self.manage_trading_dict()
                 self.logging.info(f"Updated token {token_id} with new score {new_score}, price difference {price_difference}.")
                 
-    def manage_trading_dict(self):
-        last_pulse = self.check_last_pulse()
+    def manage_trading_dict(self, chain_name, chain_id):
+        last_pulse = self.check_last_pulse(chain_id)
         if len(last_pulse) >= 1:
             if len(self.trading_dict) > 0:
                 for address, score in self.trading_dict.items():
@@ -105,7 +104,7 @@ class TradingBot:
 
     def check_last_pulse(self):
         try:
-            last_pulse = OneInchAPI.check_wallet_last_pulse(self.wallet_address)
+            last_pulse = OneInchAPI.check_wallet_assets(self.wallet_address, self.chains[])
             return last_pulse
         except Exception as e:
             print(e)
@@ -156,7 +155,8 @@ class TradingBot:
 
 if __name__ == "__main__":
     chain_ids = {
-        "BNB Chain": 56,
+        # "BNB Chain": 56,
+        "PoS": 137,
     }
     bot = TradingBot(chain_ids=chain_ids, api_key="QA15qLIBp3OykOei5tLSslzOgjCxBS3t")
     sys.setrecursionlimit(3000)
