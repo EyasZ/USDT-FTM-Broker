@@ -44,8 +44,8 @@ class TradingBot:
             time.sleep(self.interval)
 
     def initialize_tokens(self, chain_name, chain_id):
-        raw_tokens = json.loads(self.one_inch_api.get_chain_pairs(chain_id))
-        for token_id, token_info in raw_tokens.items():
+        raw_tokens_prices = json.loads(self.one_inch_api.get_chain_pairs(chain_id))
+        for token_id, token_info in raw_tokens_prices.items():
             if token_id == '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee':  # Skip native currency
                 continue
 
@@ -56,8 +56,11 @@ class TradingBot:
                 if current_price_info and 'price' in current_price_info:
                     current_price = int(current_price_info['price'])  # Ensure float for accurate calculations
                     market_cap = self.get_market_cap(token_id, chain_id)
+                    token_name = token_info['name']
+                    token_symbol = token_info['symbol']
+                    decimals = token_info['decimals']
                     initial_score = self.calculate_initial_score(market_cap)
-                    token = Token((token_id, chain_id), initial_score, current_price)
+                    token = Token((token_id, chain_id, token_name, token_symbol, decimals), initial_score, current_price)
                     self.tokens_per_chain[chain_name].insert_token(token)  # Insert new token into the tree
                     self.logging.info(f"Inserted new token {token_id} with initial score {initial_score}.")
 

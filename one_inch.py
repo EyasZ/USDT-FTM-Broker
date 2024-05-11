@@ -83,7 +83,7 @@ class OneInchAPI:
         except Exception:
             return None
 
-    def get_chain_pairs(self, chain_id: int) -> str:
+    def get_chain_pairs_prices(self, chain_id: int) -> str:
         """
         Retrieves available token pairs for a given chain.
 
@@ -93,6 +93,27 @@ class OneInchAPI:
         headers = {"Authorization": f"Bearer {self.api_key}", "accept": "application/json"}
         params = {"chain": chain_id, "currency": "USD"}
         api_url = f"https://api.1inch.dev/price/v1.1/{chain_id}"
+
+        try:
+            response = requests.get(api_url, headers=headers, params=params)
+            return response.text
+        except Exception:
+            return "Error fetching chain pairs"
+
+    def get_chain_pairs(self, chain_id: int) -> str:
+        method = "get"
+        apiUrl = "https://api.1inch.dev/token/v1.2/56"
+        requestOptions = {
+            "headers": {
+                "Authorization": "Bearer " + str(self.api_key)
+            },
+            "body": {},
+            "params": {"chain_id": chain_id}
+        }
+
+        # Prepare request components
+        headers = requestOptions.get("headers", {})
+        params = requestOptions.get("params", {})
 
         try:
             response = requests.get(api_url, headers=headers, params=params)

@@ -23,10 +23,10 @@ class Chain:
 
 class Token:
     """Represents a token with id, chain id, score, and tracks performance history."""
-    def __init__(self, data: Tuple[str, int], score: float = 0.0, last_price: float = None):
+    def __init__(self, data: Tuple[str, int, str, str, int], score: float = 0.0, last_price: float = None):
         if not data:
             raise ValueError("Initialization data cannot be empty")
-        self.id, self.chain_id = data
+        self.id, self.chain_id, self.name, self.symbol, self.decimals = data
         self.score = score
         self.last_price = last_price  # Now accepts last_price during initialization
         self.strikes = 0
