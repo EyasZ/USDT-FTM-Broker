@@ -33,19 +33,19 @@ class TradingBot:
         self.logging = logging
 
     def chain_handler(self, chain_name, chain_id):
+        self.initialize_tokens(chain_name, chain_id)
         while True:
             self.logging.info(f"Processing {chain_name} with chain ID {chain_id}")
             self.logging.info(f"Iteration self.counter: {self.counter}")
             self.update_token_scores(chain_name, chain_id)
             self.counter += 1
             if self.counter % 5 == 0:
-                self.initialize_tokens(chain_name, chain_id)
                 self.manage_trading_dict(chain_name, chain_id)
             time.sleep(self.interval)
 
     def initialize_tokens(self, chain_name, chain_id):
-        raw_tokens_prices = json.loads(self.one_inch_api.get_chain_pairs(chain_id))
-        for token_id, token_info in raw_tokens_prices.items():
+        raw_tokens = json.loads(self.one_inch_api.get_chain_pairs(chain_id))
+        for token_id, token_info in raw_tokens.items():
             if token_id == '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee':  # Skip native currency
                 continue
 
@@ -62,7 +62,7 @@ class TradingBot:
                     initial_score = self.calculate_initial_score(market_cap)
                     token = Token((token_id, chain_id, token_name, token_symbol, decimals), initial_score, current_price)
                     self.tokens_per_chain[chain_name].insert_token(token)  # Insert new token into the tree
-                    self.logging.info(f"Inserted new token {token_id} with initial score {initial_score}.")
+                    self.logging.info(f"Inserted {token}")
 
     def update_token_scores(self, chain_name, chain_id):
         for token_id, token in self.tokens_per_chain[chain_name].tokens_map.items():
@@ -86,17 +86,18 @@ class TradingBot:
                     self.trading_dict.pop(token.id)
                 elif token.score < 3 and token.id not in self.trading_dict:
                     self.trading_dict[token.id] = token.score
-                self.manage_trading_dict()
-                self.logging.info(f"Updated token {token_id} with new score {new_score}, price difference {price_difference}.")
+                self.manage_trading_dict(chain_name, chain_id)
+                self.logging.info(f"Updated token: {token}\n ROI: {-1 * price_difference/ token.initial_price}.")
                 
     def manage_trading_dict(self, chain_name, chain_id):
-        last_pulse = self.check_last_pulse(chain_id)
+        pass
+        '''last_pulse = self.check_last_pulse(chain_id)
         if len(last_pulse) >= 1:
             if len(self.trading_dict) > 0:
                 for address, score in self.trading_dict.items():
                     if address not in self.trading_dict and self.trading_dict:
                         self.swap_native_for_token(address)
-                        self.last_pulse[address] = score
+                        self.last_pulse[address] = score'''
 
 
 
@@ -105,9 +106,9 @@ class TradingBot:
     def bridge(self, token_id, amount):
         self.logging.info(f"Dummy swap {token_id} for native currency with amount {amount}")
 
-    def check_last_pulse(self):
+    def check_last_pulse(self, chain_id):
         try:
-            last_pulse = OneInchAPI.check_wallet_assets(self.wallet_address, self.chains[])
+            last_pulse = OneInchAPI.check_wallet_assets(self.wallet_address, chain_id)
             return last_pulse
         except Exception as e:
             print(e)
@@ -144,9 +145,6 @@ class TradingBot:
         for chain_name, chain_id in self.chain_ids.items():
             t = Thread(target=self.chain_handler, args=(chain_name, chain_id))
             t.start()
-
-        trading_dict_thread = Thread(target=self.manage_trading_dict, args=(self.last_pulse))
-        trading_dict_thread.start()
 
     def get_market_cap(self, token_id, chain_id):
         # Your existing implementation

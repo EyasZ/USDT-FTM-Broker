@@ -28,11 +28,12 @@ class Token:
             raise ValueError("Initialization data cannot be empty")
         self.id, self.chain_id, self.name, self.symbol, self.decimals = data
         self.score = score
+        self.initial_price = last_price
         self.last_price = last_price  # Now accepts last_price during initialization
         self.strikes = 0
 
     def __str__(self) -> str:
-        return f"Token(id={self.id}, chain_id={self.chain_id}, score={self.score}, last_price={self.last_price})"
+        return f"Token(id={self.id}, chain_id={self.chain_id}, symbol= {self.symbol}, score={self.score}, last_price={self.last_price})"
 
 class BinaryTreeNode:
     """Node in the binary tree, containing a token."""

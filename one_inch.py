@@ -102,7 +102,7 @@ class OneInchAPI:
 
     def get_chain_pairs(self, chain_id: int) -> str:
         method = "get"
-        apiUrl = "https://api.1inch.dev/token/v1.2/56"
+        api_url = f"https://api.1inch.dev/token/v1.2/{chain_id}"
         requestOptions = {
             "headers": {
                 "Authorization": "Bearer " + str(self.api_key)
@@ -117,6 +117,7 @@ class OneInchAPI:
 
         try:
             response = requests.get(api_url, headers=headers, params=params)
+            # input(response.text)
             return response.text
         except Exception:
             return "Error fetching chain pairs"
