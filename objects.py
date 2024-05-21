@@ -13,10 +13,10 @@ class TradeSignal:
 
 class Chain:
     """Represents a blockchain chain with id, address, oracle address, and name."""
-    def __init__(self, data: Tuple[int, str, str, str]):
+    def __init__(self, data: Tuple[int, str, str, str, str]):
         if not data:
             raise ValueError("Initialization data cannot be empty")
-        self.id, self.address, self.oracle_address, self.name = data
+        self.id, self.address, self.oracle_address, self.name, self.endpoint = data
 
     def __str__(self) -> str:
         return f"Chain(id={self.id}, address={self.address}, oracle_address={self.oracle_address}, name={self.name})"
@@ -31,6 +31,9 @@ class Token:
         self.initial_price = last_price
         self.last_price = last_price  # Now accepts last_price during initialization
         self.strikes = 0
+        # self.desired_balance = desired_balance
+        self.tested = False
+        self.white_listed = False
 
     def __str__(self) -> str:
         return f"Token(id={self.id}, chain_id={self.chain_id}, symbol= {self.symbol}, score={self.score}, last_price={self.last_price})"

@@ -12,10 +12,10 @@ class Web3Instance:
                         'c52606feb3a9ed3aeaf/')
 
     @staticmethod
-    def get_instance():
+    def get_instance(endpoint):
 
         if Web3Instance.instance is None:
-            Web3Instance()
+            Web3Instance(endpoint)
         return Web3Instance.instance
 
     def __init__(self, endpoint):
