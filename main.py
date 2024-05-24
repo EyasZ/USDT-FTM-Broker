@@ -13,6 +13,7 @@ class TradingBot:
         self.budget = budget
         self.chain_ids = chain_ids if chain_ids is not None else {}
         self.interval = interval
+        self.init_interval = interval * 10
         self.logging = None
         self.one_inch_api = OneInchAPI(secrets_json)
         self.configure_logging()
@@ -26,6 +27,7 @@ class TradingBot:
         self.secrets = secrets_json
         self.wallet_address = secrets_json['one_inch']['wallet_address']
         self.private_key = secrets_json['one_inch']['wallet_pk']
+        self.manage_dict_flag = False
 
     def configure_logging(self):
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='trading_bot.log', filemode='w')
@@ -39,14 +41,15 @@ class TradingBot:
 
     def chain_handler(self, chain_name, chain_id):
         self.initialize_tokens(chain_name, chain_id)
-        while True:
+        time.sleep(self.init_interval)
+        while len(self.trading_dict) < 4:
             self.logging.info(f"Processing {chain_name} with chain ID {chain_id}")
             self.logging.info(f"Iteration self.counter: {self.counter}")
             self.update_token_scores(chain_name, chain_id)
             self.counter += 1
-            if self.counter != 0 and self.counter % 5 == 0:
-                self.manage_trading_dict(chain_name, chain_id)
-            time.sleep(self.interval)
+            time.sleep(self.init_interval)
+        self.manage_trading_dict(chain_name, chain_id)
+
 
     def initialize_tokens(self, chain_name, chain_id):
         if self.one_inch_api.end_point is None:
@@ -56,9 +59,6 @@ class TradingBot:
         raw_tokens = json.loads(self.one_inch_api.get_chain_pairs())
         time.sleep(1)
         for token_id, token_info in raw_tokens.items():
-            if token_id == '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee':  # Skip native currency
-                continue
-
             token = self.tokens_per_chain[chain_name].find_token(token_id)
             if token is None:
                 current_price_info = self.one_inch_api.get_swap_rate(token_id)
@@ -67,6 +67,8 @@ class TradingBot:
                     current_price = int(current_price_info['price'])  # Ensure float for accurate calculations
                     market_cap = self.get_market_cap(token_id, chain_id)
                     token_name = token_info['name']
+                    if "us" in token_name.lower() or "eu" in token_name.lower():
+                        continue
                     token_symbol = token_info['symbol']
                     decimals = token_info['decimals']
                     initial_score = self.calculate_initial_score(market_cap)
@@ -92,6 +94,14 @@ class TradingBot:
 
     def update_token_scores(self, chain_name, chain_id):
         for token_id, token in self.tokens_per_chain[chain_name].tokens_map.items():
+            if self.manage_dict_flag:
+                flag = False
+                for token_address, _ in self.trading_dict:
+                    if token_address == token_id:
+                        flag = True
+                        break
+                if not flag:
+                    continue
             current_price_info = self.one_inch_api.get_swap_rate(token_id)
             time.sleep(1)
             if current_price_info and 'price' in current_price_info:
@@ -111,9 +121,7 @@ class TradingBot:
                 if token.id in self.trading_dict and strikes > 2 or token.id in self.trading_dict and token.score < 0:
                     if token.id != self.native_token:
                         self.trading_dict.pop(token.id)
-                    '''elif token.id == self.native_token and strikes > 7:
-                        self.sell_all'''
-                elif token.score < 3 and token.id not in self.trading_dict:
+                elif token.score > 3 and token.id not in self.trading_dict or token_id == self.native_token and token.id not in self.trading_dict :
                     self.trading_dict[token.id] = token
                 self.logging.info(f"Updated token: {token}\n ROI: {-1 * price_difference / token.initial_price}.")
 
@@ -125,37 +133,50 @@ class TradingBot:
             print(e)
         return None
 
+    def sell_all(self):
+        logging.info("Dummy sell all function activated")
+
     def manage_trading_dict(self, chain_name, chain_id):
-        last_pulse = self.check_last_pulse(chain_id)
-        to_buy = []
-        to_sell = []
+        self.manage_dict_flag = True
+        while len(self.trading_dict) > 0:
+            native = self.trading_dict.get(self.native_token)
+            if native.strikes > 5:
+                self.sell_all()
+                return
+            last_pulse = self.check_last_pulse(chain_id)
+            to_buy = []
+            to_sell = []
 
-        # Create a set of addresses from last_pulse for quick lookup
-        pulse_addresses = {address for address, balance in last_pulse.items() if int(balance) > 0}
+            # Create a set of addresses from last_pulse for quick lookup
+            pulse_addresses = {address for address, balance in last_pulse.items() if int(balance) > 0}
 
-        # If the wallet contains assets, and there are assets in trading_dict
-        if last_pulse and self.trading_dict:
-            # Check for tokens in trading_dict that are not in last_pulse (new tokens to buy)
-            for address, token in self.trading_dict.items():
-                if address not in pulse_addresses:
-                    if not token.tested:
-                        token.tested = True
-                        token.white_listed = self.one_inch_api.whitelist_token(address)
-                    if token.white_listed:
-                        to_buy.append(address)
+            # If the wallet contains assets, and there are assets in trading_dict
+            if last_pulse and self.trading_dict:
+                # Iterate over each asset in the last_pulse
+                for address, balance in last_pulse.items():
+                    token = self.trading_dict.get(address)
+                    if token:
+                        continue
+                    else:
+                        # If the address is in last_pulse but not in trading_dict, mark for selling
+                        to_sell.append((address, balance))
+                last_pulse = self.check_last_pulse(chain_id)
+                native_balance = int(last_pulse[self.native_token])
+                # Check for tokens in trading_dict that are not in last_pulse (new tokens to buy)
+                for address, token in self.trading_dict.items():
+                    if address not in pulse_addresses:
+                        if not token.tested:
+                            token.tested = True
+                            token.white_listed = self.one_inch_api.whitelist_token(address)
+                        if token.white_listed:
+                            to_buy.append(address)
 
-            # Iterate over each asset in the last_pulse
-            for address, balance in last_pulse.items():
-                token = self.trading_dict.get(address)
-                if token:
-                    continue
-                else:
-                    # If the address is in last_pulse but not in trading_dict, mark for selling
-                    to_sell.append((address, balance))
 
-        self.logging.info(f"to sell: {to_sell}\n to buy: {to_buy}")
+            self.update_token_scores(chain_name, chain_id)
+            self.logging.info(f"to sell: {to_sell}\n to buy: {to_buy}")
+            time.sleep(self.interval)
 
-        return to_buy, to_sell
+            return to_buy, to_sell
 
     def bridge(self, token_id, amount):
         self.logging.info(f"Dummy swap {token_id} for native currency with amount {amount}")
