@@ -22,7 +22,7 @@ class OneInchAPI:
 
     def whitelist_token(self, address):
         web3_instance = Web3Instance.get_instance(self.end_point).web3
-        amount = web3_instance.toWei(1, 'ether')
+        amount = web3_instance.to_wei(1, 'ether')
         try:
             buy_hash = self.swap_tokens(self.wallet_address, self.private_key, self.native_token, address, amount)
             if buy_hash:
@@ -148,7 +148,6 @@ class OneInchAPI:
 
         try:
             response = requests.get(api_url, headers=headers, params=params)
-            # input(response.text)
             return response.text
         except Exception:
             return "Error fetching chain pairs"
@@ -177,7 +176,6 @@ class OneInchAPI:
         }
 
         response = requests.get(api_url, headers=headers, params=params)
-        input(response)
 
         if response.status_code != 200:
             raise Exception(f"Error: Received status code {response.status_code} from API. Response: {response.text}")

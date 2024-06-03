@@ -45,7 +45,7 @@ class TradingBot:
         self.initialize_tokens(chain_name, chain_id)
         self.logging.info("Finished tokens initialization")
         time.sleep(self.init_interval)
-        while len(self.trading_dict) < 4:
+        while len(self.trading_dict) < 5:
             self.logging.info(f"Processing {chain_name} with chain ID {chain_id}")
             self.logging.info(f"Iteration self.counter: {self.counter}")
             self.update_token_scores(chain_name, chain_id)
@@ -135,7 +135,7 @@ class TradingBot:
         for token_id, token in self.tokens_per_chain[chain_name].tokens_map.items():
             if self.manage_dict_flag:
                 flag = False
-                for token_address, _ in self.trading_dict:
+                for token_address, _ in self.trading_dict.items():
                     if token_address == token_id:
                         flag = True
                         break
@@ -165,7 +165,7 @@ class TradingBot:
                 elif token.score > 3 and token.id not in self.trading_dict or token_id == self.native_token and token.id not in self.trading_dict :
                     self.trading_dict[token.id] = token
                     self.logging.info(f"trading dict: {self.trading_dict}")
-                self.logging.info(f"Updated token: {token}\n ROI: {(token.initial_price - current_price) / token.initial_price}.")
+                self.logging.info(f"Updated token: {token}\n ROI: {(token.initial_price - current_price) / token.initial_price}\n strikes: {token.strikes}.")
 
     def check_last_pulse(self, chain_id):
         try:
@@ -195,6 +195,7 @@ class TradingBot:
             native = self.tokens_per_chain[chain_name].find_token(self.native_token)
             if native.strikes > 4:
                 self.swap_all_to_stable(last_pulse)
+                self.trading_dict = {}
                 time.sleep(self.init_interval * 3)
                 # missing logic (swap from stable to native and continue trading)
                 exit(1)
@@ -208,7 +209,7 @@ class TradingBot:
                 # Iterate over each asset in the last_pulse
                 for address, balance in last_pulse.items():
                     token = self.trading_dict.get(address)
-                    if token and token.id != self.native_token:
+                    if token or address == self.native_token:
                         continue
                     else:
                         # If the address is in last_pulse but not in trading_dict, mark for selling
@@ -216,13 +217,14 @@ class TradingBot:
                 last_pulse = self.check_last_pulse(chain_id)
                 time.sleep(1)
                 native_balance = int(last_pulse[self.native_token])
-                token_budget = (0.7*native_balance)/len(self.trading_dict)
+                token_budget = str(int((0.7*native_balance)/len(self.trading_dict)))
                 # Check for tokens in trading_dict that are not in last_pulse (new tokens to buy)
                 for address, token in self.trading_dict.items():
                     if address not in pulse_addresses:
-                        if not token.tested and token.id != self.native_token:
+                        if not token.tested:
                             token.tested = True
                             token.white_listed = self.one_inch_api.whitelist_token(address)
+                            logging.info(f"token {address} whitelist status: {token.white_listed}")
                             time.sleep(1)
                         if token.white_listed and token.id != self.native_token:
                             tx_hash = self.swap_native_for_token(address, token_budget)
