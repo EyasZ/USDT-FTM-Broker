@@ -25,17 +25,24 @@ class OneInchAPI:
         amount = web3_instance.toWei(1, 'ether')
         try:
             buy_hash = self.swap_tokens(self.wallet_address, self.private_key, self.native_token, address, amount)
-            time.sleep(3)
             if buy_hash:
-                sell_hash = self.swap_tokens(self.wallet_address, self.private_key, self.native_token, address, amount)
-                time.sleep(3)
-                if sell_hash:
-                    return True
+                buy_receipt = web3_instance.eth.wait_for_transaction_receipt(buy_hash)
+                if buy_receipt.status == 1:
+                    sell_hash = self.swap_tokens(self.wallet_address, self.private_key, self.native_token, address, amount)
+                    if sell_hash:
+                        sell_receipt = web3_instance.eth.wait_for_transaction_receipt(sell_hash)
+                        if sell_receipt.status == 1:
+                            return True
+                        else:
+                            return False
+                    else:
+                        return False
                 else:
                     return False
             else:
                 return False
-        except Exception:
+        except Exception as e:
+            print(f"An error occurred: {e}")
             return False
 
     def check_wallet_assets(self):
@@ -204,4 +211,5 @@ class OneInchAPI:
         # Sign and send the transaction
         signed_tx = web3_instance.eth.account.sign_transaction(tx, private_key=private_key)
         tx_hash = web3_instance.eth.send_raw_transaction(signed_tx.rawTransaction)
+        time.sleep(5)
         return tx_hash.hex()

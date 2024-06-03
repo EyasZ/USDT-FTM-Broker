@@ -175,13 +175,12 @@ class TradingBot:
             print(e)
         return None
 
-    def sell_all(self, last_pulse):
+    def swap_all_to_stable(self, last_pulse):
         for address, balance in last_pulse.items():
-            if address != self.native_token:
+            if address != self.native_token and address != self.stable_token:
                 self.swap_token_for_stable(address, balance)
-            else:
+            elif address != self.stable_token:
                 self.swap_token_for_stable(address, 0.7*balance)
-        exit(1)
 
 
         logging.info("Dummy sell all function activated")
@@ -195,8 +194,10 @@ class TradingBot:
             time.sleep(1)
             native = self.tokens_per_chain[chain_name].find_token(self.native_token)
             if native.strikes > 4:
-                self.sell_all(last_pulse)
-                return
+                self.swap_all_to_stable(last_pulse)
+                time.sleep(self.init_interval * 3)
+                # missing logic (swap from stable to native and continue trading)
+                exit(1)
 
             # Create a set of addresses from last_pulse for quick lookup
             if last_pulse:
@@ -219,11 +220,11 @@ class TradingBot:
                 # Check for tokens in trading_dict that are not in last_pulse (new tokens to buy)
                 for address, token in self.trading_dict.items():
                     if address not in pulse_addresses:
-                        if not token.tested:
+                        if not token.tested and token.id != self.native_token:
                             token.tested = True
                             token.white_listed = self.one_inch_api.whitelist_token(address)
                             time.sleep(1)
-                        if token.white_listed:
+                        if token.white_listed and token.id != self.native_token:
                             tx_hash = self.swap_native_for_token(address, token_budget)
                             time.sleep(1)
             self.update_token_scores(chain_name, chain_id)
