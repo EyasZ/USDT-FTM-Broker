@@ -149,25 +149,59 @@ class OneInchAPI:
     def swap_tokens(self, from_address, private_key, from_token_address, to_token_address, amount):
         web3_instance = Web3Instance.get_instance(self.end_point).web3
 
+        # Normalize addresses to checksum addresses
+        from_address = web3_instance.to_checksum_address(from_address)
+        to_token_address = web3_instance.to_checksum_address(to_token_address)
+
         # 1inch API endpoint for swap
-        api_url = "https://api.1inch.io/v4.0/1/swap"
+        api_url = f"https://api.1inch.dev/swap/v6.0/{self.chain_id}/swap"
+
+        headers = {
+            'Authorization': "Bearer " + self.api_key
+        }
 
         # Prepare swap request
         params = {
-            'fromTokenAddress': from_token_address,
-            'toTokenAddress': to_token_address,
+            'src': from_token_address,
+            'dst': to_token_address,
             'amount': amount,
-            'fromAddress': from_address,
+            'from': from_address,
             'slippage': 1,
         }
 
-        response = requests.get(api_url, params=params).json()
+        response = requests.get(api_url, headers=headers, params=params)
+        input(response)
+
+        if response.status_code != 200:
+            raise Exception(f"Error: Received status code {response.status_code} from API. Response: {response.text}")
+
+        try:
+            response_json = response.json()
+        except ValueError:
+            raise Exception(f"Error: Could not parse response as JSON. Response: {response.text}")
 
         # Extracting transaction data
-        tx = response['tx']
+        if 'tx' not in response_json:
+            raise Exception(f"Error: 'tx' field not found in response. Response: {response_json}")
+
+        tx = response_json['tx']
+
+        # Ensure the 'from' and 'to' fields in the transaction data are checksummed
+        tx['from'] = from_address
+        tx['to'] = web3_instance.to_checksum_address(tx['to'])
+
+        # Fetch the current nonce for the from_address
+        nonce = web3_instance.eth.get_transaction_count(from_address)
+        tx['nonce'] = nonce
+
+        # Convert necessary fields to appropriate types
+        tx['value'] = int(tx['value'])
+        tx['gasPrice'] = int(tx['gasPrice'])
+
+        # Include the chainId for EIP-155 replay protection
+        tx['chainId'] = web3_instance.eth.chain_id
 
         # Sign and send the transaction
         signed_tx = web3_instance.eth.account.sign_transaction(tx, private_key=private_key)
         tx_hash = web3_instance.eth.send_raw_transaction(signed_tx.rawTransaction)
-
         return tx_hash.hex()

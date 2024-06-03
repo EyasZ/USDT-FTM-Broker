@@ -1,4 +1,4 @@
-from web3 import Web3
+from quick_node import Web3Instance
 
 class ChainlinkDataFetcher:
     def __init__(self, logging, quicknode_url):
@@ -9,8 +9,8 @@ class ChainlinkDataFetcher:
 
     def connect_to_blockchain(self):
         # Connect to the blockchain using the provided QuickNode URL
-        w3 = Web3(Web3.HTTPProvider(self.quicknode_url))
-        if not w3.is_connected():
+        w3 = Web3Instance.get_instance(self.quicknode_url).web3
+        if not w3:
             self.logging.error("Failed to connect to the network.")
             return None
         return w3
@@ -38,14 +38,14 @@ class ChainlinkDataFetcher:
     def get_rates(self, contract_addresses):
         # Fetch latest price data for specified contract addresses
         rates = {}
-        for symbol, address in contract_addresses.items():
+        for address in contract_addresses:
             try:
                 contract = self.w3.eth.contract(address=address, abi=self.chainlink_feed_abi)
                 price = contract.functions.latestRoundData().call()[1]
                 if price <= 0:
-                    self.logging.error(f"Invalid price data for {symbol}.")
+                    self.logging.error(f"Invalid price data for {address}.")
                     continue
-                rates[symbol] = price / 10 ** 8
+                rates[address] = price / 10 ** 8
             except Exception as e:
-                self.logging.error(f"Error fetching rate for {symbol}: {e}")
+                self.logging.error(f"Error fetching rate for {address}: {e}")
         return rates

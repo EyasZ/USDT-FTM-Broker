@@ -6,7 +6,7 @@ from threading import Thread
 from one_inch import OneInchAPI  # Ensure this is correctly implemented
 from objects import Chain, Token, TokenBinaryTree
 import sys
-
+from chainlink import ChainlinkDataFetcher
 
 class TradingBot:
     def __init__(self, secrets_json, budget=0, chain_ids=None, interval=30, api_key="YOUR_API_KEY"):
@@ -15,7 +15,9 @@ class TradingBot:
         self.interval = interval
         self.init_interval = interval * 10
         self.logging = None
+        self.stable_token = None
         self.one_inch_api = OneInchAPI(secrets_json)
+        self.chain_link = None
         self.configure_logging()
         self.chains = {name: Chain((chain_id, '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 'ORACLE_ADDRESS', name, end_point))
                        for name, (chain_id, end_point) in self.chain_ids.items()}
@@ -41,6 +43,7 @@ class TradingBot:
 
     def chain_handler(self, chain_name, chain_id):
         self.initialize_tokens(chain_name, chain_id)
+        self.logging.info("Finished tokens initialization")
         time.sleep(self.init_interval)
         while len(self.trading_dict) < 4:
             self.logging.info(f"Processing {chain_name} with chain ID {chain_id}")
@@ -53,14 +56,15 @@ class TradingBot:
 
     def initialize_tokens(self, chain_name, chain_id):
         if self.one_inch_api.end_point is None:
-            self.one_inch_api.end_point = self.secrets['quick_node'][chain_name]
+            self.one_inch_api.end_point = self.secrets['quick_node'][chain_name]["end_point"]
             self.one_inch_api.chain_id = chain_id
+            self.stable_token = self.secrets['quick_node'][chain_name]["stable_token"]
             self.one_inch_api.logging = self.logging
         raw_tokens = json.loads(self.one_inch_api.get_chain_pairs())
         time.sleep(1)
         for token_id, token_info in raw_tokens.items():
             token = self.tokens_per_chain[chain_name].find_token(token_id)
-            if token is None:
+            if token is None and token_id != self.native_token:
                 current_price_info = self.one_inch_api.get_swap_rate(token_id)
                 time.sleep(1)
                 if current_price_info and 'price' in current_price_info:
@@ -75,22 +79,57 @@ class TradingBot:
                     token = Token((token_id, chain_id, token_name, token_symbol, decimals), initial_score, current_price)
                     self.tokens_per_chain[chain_name].insert_token(token)  # Insert new token into the tree
                     self.logging.info(f"Inserted {token}")
+            elif token_id == self.native_token:
+                current_price_info = self.one_inch_api.get_swap_rate(token_id, self.stable_token)
+                time.sleep(1)
+                if current_price_info and 'price' in current_price_info:
+                    current_price = int(current_price_info['price'])  # Ensure float for accurate calculations
+                    market_cap = self.get_market_cap(token_id, chain_id)
+                    token_name = token_info['name']
+                    if "us" in token_name.lower() or "eu" in token_name.lower():
+                        continue
+                    token_symbol = token_info['symbol']
+                    decimals = token_info['decimals']
+                    initial_score = self.calculate_initial_score(market_cap)
+                    token = Token((token_id, chain_id, token_name, token_symbol, decimals), initial_score,
+                                  current_price)
+                    self.tokens_per_chain[chain_name].insert_token(token)  # Insert new token into the tree
+                    self.logging.info(f"Inserted native {token}")
+
 
     def calculate_adjustment_factor(self, price_difference, last_price):
         """
         Calculates the adjustment factor for a token's score based on the price difference and last price.
+        The score is more rewarding for positive changes and penalizes negative changes.
         """
         if last_price == 0:
             return 0  # Avoid division by zero if last_price is not initialized.
-        adjustment_factor = abs(price_difference / last_price) * 100
-        adjustment_factor = adjustment_factor % 10 + int(adjustment_factor / 10)
-        bonus = 0
-        if price_difference <= 0:
-            if price_difference < 0:
-                bonus = 1
-            return adjustment_factor + bonus
+
+        # Calculate the percentage change
+        percentage_change = (price_difference / last_price) * 100
+
+        # Initialize the adjustment factor
+        adjustment_factor = 0
+
+        # Apply game theory principles
+        if percentage_change > 0:
+            # Reward for positive changes
+            multiplier = 1.5  # Increase this value to make positive changes more rewarding
+            adjustment_factor = percentage_change * multiplier
+
+            # Add a bonus for significant positive changes
+            if percentage_change > 10:
+                adjustment_factor += 10  # Add a flat bonus for significant increases
+
         else:
-            return -1 * adjustment_factor
+            # Penalty for negative changes
+            penalty_multiplier = 1.2  # Increase this value to make negative changes more penalizing
+            adjustment_factor = percentage_change * penalty_multiplier
+
+        # Cap the adjustment factor to avoid excessively high scores
+        adjustment_factor = max(min(adjustment_factor, 100), -100)
+
+        return adjustment_factor
 
     def update_token_scores(self, chain_name, chain_id):
         for token_id, token in self.tokens_per_chain[chain_name].tokens_map.items():
@@ -102,7 +141,10 @@ class TradingBot:
                         break
                 if not flag:
                     continue
-            current_price_info = self.one_inch_api.get_swap_rate(token_id)
+            if token_id == self.native_token:
+                current_price_info = self.one_inch_api.get_swap_rate(token_id, self.stable_token)
+            else:
+                current_price_info = self.one_inch_api.get_swap_rate(token_id)
             time.sleep(1)
             if current_price_info and 'price' in current_price_info:
                 current_price = int(current_price_info['price'])
@@ -110,20 +152,20 @@ class TradingBot:
                     self.logging.error(f"last price was not updated correctly for token {token.id}")
                     continue
                 price_difference = current_price - token.last_price
-                strikes = token.strikes     
-                adjustment_factor = self.calculate_adjustment_factor(price_difference, token.last_price)
+                adjustment_factor = self.calculate_adjustment_factor(price_difference * -1, token.last_price)
                 new_score = token.score + adjustment_factor
-                self.tokens_per_chain[chain_name].update_token(token.id, new_score, current_price, strikes)
-                if not price_difference < 0:
-                    strikes += 1
-                elif price_difference < 0 < strikes:
-                    strikes = 0
-                if token.id in self.trading_dict and strikes > 2 or token.id in self.trading_dict and token.score < 0:
+                self.tokens_per_chain[chain_name].update_token(token.id, new_score, current_price, token.strikes)
+                if price_difference > 0:
+                    token.strikes += 1
+                elif price_difference < 0 < token.strikes:
+                    token.strikes = 0
+                if token.id in self.trading_dict and token.strikes > 2 or token.id in self.trading_dict and token.score < 0:
                     if token.id != self.native_token:
                         self.trading_dict.pop(token.id)
                 elif token.score > 3 and token.id not in self.trading_dict or token_id == self.native_token and token.id not in self.trading_dict :
                     self.trading_dict[token.id] = token
-                self.logging.info(f"Updated token: {token}\n ROI: {-1 * price_difference / token.initial_price}.")
+                    self.logging.info(f"trading dict: {self.trading_dict}")
+                self.logging.info(f"Updated token: {token}\n ROI: {(token.initial_price - current_price) / token.initial_price}.")
 
     def check_last_pulse(self, chain_id):
         try:
@@ -133,64 +175,82 @@ class TradingBot:
             print(e)
         return None
 
-    def sell_all(self):
+    def sell_all(self, last_pulse):
+        for address, balance in last_pulse.items():
+            if address != self.native_token:
+                self.swap_token_for_stable(address, balance)
+            else:
+                self.swap_token_for_stable(address, 0.7*balance)
+        exit(1)
+
+
         logging.info("Dummy sell all function activated")
 
     def manage_trading_dict(self, chain_name, chain_id):
+        time.sleep(1)
         self.manage_dict_flag = True
         while len(self.trading_dict) > 0:
-            native = self.trading_dict.get(self.native_token)
-            if native.strikes > 5:
-                self.sell_all()
-                return
             last_pulse = self.check_last_pulse(chain_id)
-            to_buy = []
-            to_sell = []
+            logging.info(last_pulse)
+            time.sleep(1)
+            native = self.tokens_per_chain[chain_name].find_token(self.native_token)
+            if native.strikes > 4:
+                self.sell_all(last_pulse)
+                return
 
             # Create a set of addresses from last_pulse for quick lookup
-            pulse_addresses = {address for address, balance in last_pulse.items() if int(balance) > 0}
+            if last_pulse:
+                pulse_addresses = {address for address, balance in last_pulse.items() if int(balance) > 0}
 
             # If the wallet contains assets, and there are assets in trading_dict
             if last_pulse and self.trading_dict:
                 # Iterate over each asset in the last_pulse
                 for address, balance in last_pulse.items():
                     token = self.trading_dict.get(address)
-                    if token:
+                    if token and token.id != self.native_token:
                         continue
                     else:
                         # If the address is in last_pulse but not in trading_dict, mark for selling
-                        to_sell.append((address, balance))
+                        tx_hash = self.swap_token_for_native(token_address=address, amount=balance)
                 last_pulse = self.check_last_pulse(chain_id)
+                time.sleep(1)
                 native_balance = int(last_pulse[self.native_token])
+                token_budget = (0.7*native_balance)/len(self.trading_dict)
                 # Check for tokens in trading_dict that are not in last_pulse (new tokens to buy)
                 for address, token in self.trading_dict.items():
                     if address not in pulse_addresses:
                         if not token.tested:
                             token.tested = True
                             token.white_listed = self.one_inch_api.whitelist_token(address)
+                            time.sleep(1)
                         if token.white_listed:
-                            to_buy.append(address)
-
-
+                            tx_hash = self.swap_native_for_token(address, token_budget)
+                            time.sleep(1)
             self.update_token_scores(chain_name, chain_id)
-            self.logging.info(f"to sell: {to_sell}\n to buy: {to_buy}")
             time.sleep(self.interval)
-
-            return to_buy, to_sell
 
     def bridge(self, token_id, amount):
         self.logging.info(f"Dummy swap {token_id} for native currency with amount {amount}")
 
-    def swap_token_for_native(self, token, amount):
-        tx_hash = self.one_inch_api.swap_tokens(self.wallet_address, token.id,
+    def swap_token_for_native(self, token_address, amount):
+        tx_hash = self.one_inch_api.swap_tokens(self.wallet_address, self.private_key, token_address,
                                                 self.native_token, amount)
-        self.logging.info(f"swapped {token.id} for native currency with amount {amount}\n transaction hash = {tx_hash}")
+        self.logging.info(f"swapped {token_address} for native currency - amount: {amount}\n transaction hash = {tx_hash}")
+        return tx_hash
 
-    def swap_native_for_token(self, token, amount):
+    def swap_native_for_token(self, token_address, amount):
         tx_hash = self.one_inch_api.swap_tokens(self.wallet_address,
-                                                self.native_token, token.id, amount)
-        self.logging.info(f"Dummy swap native currency for {token.id} with amount {amount}\n"
+                                                self.private_key, self.native_token, token_address, amount)
+        self.logging.info(f"swapped native currency for {token_address} - amount: {amount}\n"
                           f"transaction hash = {tx_hash}")
+        return tx_hash
+
+    def swap_token_for_stable(self, token_address, amount):
+        tx_hash = self.one_inch_api.swap_tokens(self.wallet_address, self.private_key,
+                                                self.stable_token, token_address, amount)
+        self.logging.info(f"swapped {token_address} with stable currency - amount: {amount}\n"
+                          f"transaction hash = {tx_hash}")
+        return tx_hash
 
     def trade(self, last_pulse):
         pass
