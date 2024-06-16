@@ -239,7 +239,9 @@ class OneInchAPI:
         tx['chainId'] = web3_instance.eth.chain_id
 
         # Check if approval is needed
+        time.sleep(1)
         allowance_url = f"https://api.1inch.dev/swap/v6.0/{self.chain_id}/approve/allowance?tokenAddress={from_token_address}&walletAddress={from_address}"
+        time.sleep(1)
         allowance_response = requests.get(allowance_url, headers=headers)
         allowance = int(allowance_response.json().get('allowance', 0))
 
