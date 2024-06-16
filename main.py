@@ -45,7 +45,7 @@ class TradingBot:
         self.initialize_tokens(chain_name, chain_id)
         self.logging.info("Finished tokens initialization")
         time.sleep(self.init_interval)
-        while len(self.trading_dict) < 5:
+        while len(self.trading_dict) < 4:
             self.logging.info(f"Processing {chain_name} with chain ID {chain_id}")
             self.logging.info(f"Iteration self.counter: {self.counter}")
             self.update_token_scores(chain_name, chain_id)
@@ -230,7 +230,7 @@ class TradingBot:
                             tx_hash = self.swap_native_for_token(address, token_budget)
                             time.sleep(1)
             self.update_token_scores(chain_name, chain_id)
-            time.sleep(self.interval)
+            time.sleep(self.init_interval * 3)
 
     def bridge(self, token_id, amount):
         self.logging.info(f"Dummy swap {token_id} for native currency with amount {amount}")
