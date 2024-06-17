@@ -71,7 +71,7 @@ class TradingBot:
                     current_price = int(current_price_info['price'])  # Ensure float for accurate calculations
                     market_cap = self.get_market_cap(token_id, chain_id)
                     token_name = token_info['name']
-                    if "us" in token_name.lower() or "eu" in token_name.lower() or "OX" in token_name.lower:
+                    if "us" in token_name.lower() or "eu" in token_name.lower() or "OX" in token_name.lower():
                         continue
                     token_symbol = token_info['symbol']
                     decimals = token_info['decimals']
