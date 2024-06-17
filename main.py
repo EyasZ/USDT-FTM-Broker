@@ -45,7 +45,7 @@ class TradingBot:
         self.initialize_tokens(chain_name, chain_id)
         self.logging.info("Finished tokens initialization")
         time.sleep(self.init_interval)
-        while len(self.trading_dict) < 4:
+        while len(self.trading_dict) < 3 and self.counter < 5:
             self.logging.info(f"Processing {chain_name} with chain ID {chain_id}")
             self.logging.info(f"Iteration self.counter: {self.counter}")
             self.update_token_scores(chain_name, chain_id)

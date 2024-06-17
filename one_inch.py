@@ -28,7 +28,7 @@ class OneInchAPI:
             if buy_hash:
                 buy_receipt = web3_instance.eth.wait_for_transaction_receipt(buy_hash)
                 if buy_receipt.status == 1:
-                    sell_hash = self.swap_tokens(self.wallet_address, self.private_key, address, self.native_token, amount)
+                    sell_hash = self.swap_tokens(self.wallet_address, self.private_key, address, self.native_token, int(amount))
                     if sell_hash:
                         sell_receipt = web3_instance.eth.wait_for_transaction_receipt(sell_hash)
                         if sell_receipt.status == 1:
@@ -152,40 +152,58 @@ class OneInchAPI:
         except Exception:
             return "Error fetching chain pairs"
 
-    def approve_token(self, web3_instance, from_address, private_key, token_address, spender, amount):
-        token_abi = [
-            {
-                "constant": False,
-                "inputs": [
-                    {"name": "_spender", "type": "address"},
-                    {"name": "_value", "type": "uint256"}
-                ],
-                "name": "approve",
-                "outputs": [{"name": "", "type": "bool"}],
-                "type": "function"
-            }
-        ]
-        token_contract = web3_instance.eth.contract(address=token_address, abi=token_abi)
+    def get_approve_calldata(self, token_address):
+        api_url = f"https://api.1inch.dev/swap/v6.0/{self.chain_id}/approve/transaction"
+        headers = {
+            'Authorization': "Bearer " + self.api_key
+        }
+        params = {
+            'tokenAddress': token_address,
+        }
+        response = requests.get(api_url, headers=headers, params=params)
+        if response.status_code != 200:
+            raise Exception(f"Error: Received status code {response.status_code} from API. Response: {response.text}")
+        try:
+            response_json = response.json()
+        except ValueError:
+            raise Exception(f"Error: Could not parse response as JSON. Response: {response.text}")
 
-        nonce = web3_instance.eth.get_transaction_count(from_address)
-        tx = token_contract.functions.approve(spender, amount).build_transaction({
+        return response_json
+
+    def check_allowance(self, token_address, wallet_address):
+        allowance_url = f"https://api.1inch.dev/swap/v6.0/{self.chain_id}/approve/allowance?tokenAddress={token_address}&walletAddress={wallet_address}"
+        headers = {
+            'Authorization': "Bearer " + self.api_key
+        }
+        allowance_response = requests.get(allowance_url, headers=headers)
+        allowance = int(allowance_response.json().get('allowance', 0))
+        return allowance
+
+    def approve_token(self, web3_instance, from_address, private_key, token_address):
+        from_address = web3_instance.to_checksum_address(from_address)
+        token_address = web3_instance.to_checksum_address(token_address)
+
+        approval_data = self.get_approve_calldata(token_address)
+
+        tx = {
             'from': from_address,
+            'to': web3_instance.to_checksum_address(approval_data['to']),
+            'data': approval_data['data'],
             'gas': 200000,
-            'gasPrice': web3_instance.toWei('20', 'gwei'),
-            'nonce': nonce,
+            'gasPrice': web3_instance.to_wei('50', 'gwei'),
+            'nonce': web3_instance.eth.get_transaction_count(from_address, 'pending'),
             'chainId': self.chain_id
-        })
+        }
 
         signed_tx = web3_instance.eth.account.sign_transaction(tx, private_key=private_key)
         tx_hash = web3_instance.eth.send_raw_transaction(signed_tx.rawTransaction)
-        self.logging.info(f"Approval transaction sent with hash: {web3_instance.toHex(tx_hash)}")
+        print(f"Approval transaction sent with hash: {web3_instance.to_hex(tx_hash)}")
 
-        tx_receipt = web3_instance.eth.waitForTransactionReceipt(tx_hash)
+        tx_receipt = web3_instance.eth.wait_for_transaction_receipt(tx_hash)
         return tx_receipt
 
     def swap_tokens(self, from_address, private_key, from_token_address, to_token_address, amount):
         web3_instance = Web3Instance.get_instance(self.end_point).web3
-
         # Normalize addresses to checksum addresses
         from_address = web3_instance.to_checksum_address(from_address)
         to_token_address = web3_instance.to_checksum_address(to_token_address)
@@ -208,6 +226,7 @@ class OneInchAPI:
         }
 
         response = requests.get(api_url, headers=headers, params=params)
+        time.sleep(1)
 
         if response.status_code != 200:
             raise Exception(f"Error: Received status code {response.status_code} from API. Response: {response.text}")
@@ -237,17 +256,16 @@ class OneInchAPI:
 
         # Include the chainId for EIP-155 replay protection
         tx['chainId'] = web3_instance.eth.chain_id
-
         # Check if approval is needed
+        allowance = self.check_allowance(from_token_address, from_address)
         time.sleep(1)
-        allowance_url = f"https://api.1inch.dev/swap/v6.0/{self.chain_id}/approve/allowance?tokenAddress={from_token_address}&walletAddress={from_address}"
-        time.sleep(1)
-        allowance_response = requests.get(allowance_url, headers=headers)
-        allowance = int(allowance_response.json().get('allowance', 0))
+        if not allowance:
+            allowance = 0
 
         if allowance < int(amount):
-            spender = tx['to']  # The router address
-            self.approve_token(web3_instance, from_address, private_key, from_token_address, spender, amount)
+            self.logging.info(f"got to approving token {from_token_address}")
+            self.approve_token(web3_instance, from_address, private_key, from_token_address)
+            time.sleep(1)
 
         # Sign and send the transaction
         signed_tx = web3_instance.eth.account.sign_transaction(tx, private_key=private_key)
