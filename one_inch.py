@@ -22,13 +22,17 @@ class OneInchAPI:
 
     def whitelist_token(self, address):
         web3_instance = Web3Instance.get_instance(self.end_point).web3
-        amount = web3_instance.to_wei(1, 'ether')
+        amount = web3_instance.to_wei(5, 'ether')
         try:
             buy_hash = self.swap_tokens(self.wallet_address, self.private_key, self.native_token, address, amount)
+            time.sleep(1)
             if buy_hash:
                 buy_receipt = web3_instance.eth.wait_for_transaction_receipt(buy_hash)
                 if buy_receipt.status == 1:
-                    sell_hash = self.swap_tokens(self.wallet_address, self.private_key, address, self.native_token, int(amount))
+                    time.sleep(1)
+                    balance = self.check_wallet_assets()[address]
+                    time.sleep(1)
+                    sell_hash = self.swap_tokens(self.wallet_address, self.private_key, address, self.native_token, balance)
                     if sell_hash:
                         sell_receipt = web3_instance.eth.wait_for_transaction_receipt(sell_hash)
                         if sell_receipt.status == 1:
@@ -42,7 +46,7 @@ class OneInchAPI:
             else:
                 return False
         except Exception as e:
-            print(f"An error occurred: {e}")
+            self.logging.error(f"An error occurred: {e}")
             return False
 
     def check_wallet_assets(self):
@@ -179,11 +183,13 @@ class OneInchAPI:
         allowance = int(allowance_response.json().get('allowance', 0))
         return allowance
 
-    def approve_token(self, web3_instance, from_address, private_key, token_address):
-        from_address = web3_instance.to_checksum_address(from_address)
+    def approve_token(self, token_address):
+        web3_instance = Web3Instance.get_instance(self.end_point).web3
+        from_address = web3_instance.to_checksum_address(self.wallet_address)
         token_address = web3_instance.to_checksum_address(token_address)
 
         approval_data = self.get_approve_calldata(token_address)
+        time.sleep(1)
 
         tx = {
             'from': from_address,
@@ -195,7 +201,7 @@ class OneInchAPI:
             'chainId': self.chain_id
         }
 
-        signed_tx = web3_instance.eth.account.sign_transaction(tx, private_key=private_key)
+        signed_tx = web3_instance.eth.account.sign_transaction(tx, private_key=self.private_key)
         tx_hash = web3_instance.eth.send_raw_transaction(signed_tx.rawTransaction)
         print(f"Approval transaction sent with hash: {web3_instance.to_hex(tx_hash)}")
 
@@ -208,6 +214,12 @@ class OneInchAPI:
         from_address = web3_instance.to_checksum_address(from_address)
         to_token_address = web3_instance.to_checksum_address(to_token_address)
         from_token_address = web3_instance.to_checksum_address(from_token_address)
+
+        try:
+            self.approve_token(from_token_address)
+        except Exception as e:
+            self.logging.error(e)
+        time.sleep(1)
 
         # 1inch API endpoint for swap
         api_url = f"https://api.1inch.dev/swap/v6.0/{self.chain_id}/swap"
@@ -246,27 +258,17 @@ class OneInchAPI:
         tx['from'] = from_address
         tx['to'] = web3_instance.to_checksum_address(tx['to'])
 
-        # Fetch the current nonce for the from_address
-        nonce = web3_instance.eth.get_transaction_count(from_address)
-        tx['nonce'] = nonce
-
         # Convert necessary fields to appropriate types
         tx['value'] = int(tx['value'])
         tx['gasPrice'] = int(tx['gasPrice'])
 
         # Include the chainId for EIP-155 replay protection
         tx['chainId'] = web3_instance.eth.chain_id
-        # Check if approval is needed
-        allowance = self.check_allowance(from_token_address, from_address)
-        time.sleep(1)
-        if not allowance:
-            allowance = 0
 
-        if allowance < int(amount):
-            self.logging.info(f"got to approving token {from_token_address}")
-            self.approve_token(web3_instance, from_address, private_key, from_token_address)
-            time.sleep(1)
-
+        self.logging.info(f"got to approving token {from_token_address}")
+        # Fetch the current nonce for the from_address
+        nonce = web3_instance.eth.get_transaction_count(from_address, 'pending')
+        tx['nonce'] = nonce
         # Sign and send the transaction
         signed_tx = web3_instance.eth.account.sign_transaction(tx, private_key=private_key)
         tx_hash = web3_instance.eth.send_raw_transaction(signed_tx.rawTransaction)

@@ -32,14 +32,14 @@ class TradingBot:
         self.manage_dict_flag = False
 
     def configure_logging(self):
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='trading_bot.log', filemode='w')
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='history.log', filemode='w')
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         console.setFormatter(formatter)
         logging.getLogger('').addHandler(console)
         self.logging = logging
-        OneInchAPI.logging = logging
+        self.one_inch_api.logging = logging
 
     def chain_handler(self, chain_name, chain_id):
         self.initialize_tokens(chain_name, chain_id)
@@ -71,7 +71,7 @@ class TradingBot:
                     current_price = int(current_price_info['price'])  # Ensure float for accurate calculations
                     market_cap = self.get_market_cap(token_id, chain_id)
                     token_name = token_info['name']
-                    if "us" in token_name.lower() or "eu" in token_name.lower():
+                    if "us" in token_name.lower() or "eu" in token_name.lower() or "OX" in token_name.lower:
                         continue
                     token_symbol = token_info['symbol']
                     decimals = token_info['decimals']
@@ -155,6 +155,9 @@ class TradingBot:
                 adjustment_factor = self.calculate_adjustment_factor(price_difference * -1, token.last_price)
                 new_score = token.score + adjustment_factor
                 self.tokens_per_chain[chain_name].update_token(token.id, new_score, current_price, token.strikes)
+                if token_id == self.native_token and new_score < 0.5:
+                    self.swap_all_to_stable(self.check_last_pulse(chain_id))
+                    exit(1)
                 if price_difference > 0:
                     token.strikes += 1
                 elif price_difference < 0 < token.strikes:
@@ -183,7 +186,7 @@ class TradingBot:
                 self.swap_token_for_stable(address, 0.7*balance)
 
 
-        logging.info("Dummy sell all function activated")
+        logging.info("swap all function activated")
 
     def manage_trading_dict(self, chain_name, chain_id):
         time.sleep(1)
@@ -193,7 +196,7 @@ class TradingBot:
             logging.info(last_pulse)
             time.sleep(1)
             native = self.tokens_per_chain[chain_name].find_token(self.native_token)
-            if native.strikes > 4:
+            if native.strikes > 4 or native.score < 0:
                 self.swap_all_to_stable(last_pulse)
                 self.trading_dict = {}
                 time.sleep(self.init_interval * 3)
@@ -213,6 +216,8 @@ class TradingBot:
                         continue
                     else:
                         # If the address is in last_pulse but not in trading_dict, mark for selling
+                        self.one_inch_api.approve_token(address)
+                        time.sleep(1)
                         tx_hash = self.swap_token_for_native(token_address=address, amount=balance)
                 last_pulse = self.check_last_pulse(chain_id)
                 time.sleep(1)
