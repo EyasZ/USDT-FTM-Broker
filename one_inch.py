@@ -22,7 +22,11 @@ class OneInchAPI:
 
     def whitelist_token(self, address):
         web3_instance = Web3Instance.get_instance(self.end_point).web3
-        amount = web3_instance.to_wei(5, 'ether')
+        amount = web3_instance.to_wei(3, 'ether')
+        value_loss = (amount - self.reverse_swap_rate(address, amount)['price']) / amount
+        time.sleep(1)
+        if value_loss > 0.02:
+            return False
         try:
             buy_hash = self.swap_tokens(self.wallet_address, self.private_key, self.native_token, address, amount)
             time.sleep(1)
@@ -83,6 +87,37 @@ class OneInchAPI:
     def __str__(self) -> str:
         return f"OneInchAPI(api_key={self.api_key})"
 
+    def reverse_swap_rate(self, from_token_address: str, amount: int ,
+                          to_token_address: str = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',) -> dict:
+        """
+        Retrieves the swap rate for a given pair of tokens.
+
+        :param from_token_address: Address of the source token.
+        :param to_token_address: Address of the destination token.
+        :param amount: Amount of the source token to swap.
+        :return: Dictionary with price and gas amount or None if request fails.
+        """
+        headers = {"Authorization": f"Bearer {self.api_key}", "accept": "application/json"}
+        params = {
+            "src": from_token_address,
+            "dst": to_token_address,
+            "amount": amount,
+            "includeTokensInfo": "true",
+            "includeProtocols": "false",
+            "includeGas": "true"
+        }
+        api_url = f"https://api.1inch.dev/swap/v6.0/{self.chain_id}/quote"
+
+        try:
+            response = requests.get(api_url, headers=headers, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                price = data['dstAmount']
+                return {"price": price, "gas": Decimal(data.get("gas", 0)), "name": data.get("name")}
+            else:
+                return None
+        except Exception as e:
+            return None
     def get_swap_rate(self, to_token_address: str,
                       from_token_address: str = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
                       amount: int = 10 ** 18) -> dict:

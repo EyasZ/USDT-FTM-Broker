@@ -156,16 +156,16 @@ class TradingBot:
                 new_score = token.score + adjustment_factor
                 self.tokens_per_chain[chain_name].update_token(token.id, new_score, current_price, token.strikes)
                 if token_id == self.native_token and new_score < 0.5:
-                    self.swap_all_to_stable(self.check_last_pulse(chain_id))
+                    self.swap_all_to_stable(chain_id)
                     exit(1)
                 if price_difference > 0:
                     token.strikes += 1
                 elif price_difference < 0 < token.strikes:
                     token.strikes = 0
-                if token.id in self.trading_dict and token.strikes > 2 or token.id in self.trading_dict and token.score < 0:
+                if token.id in self.trading_dict and token.strikes > 2 or token.id in self.trading_dict and token.score < 1:
                     if token.id != self.native_token:
                         self.trading_dict.pop(token.id)
-                elif token.score > 3 and token.id not in self.trading_dict or token_id == self.native_token and token.id not in self.trading_dict :
+                elif token.score > 3 and token.id not in self.trading_dict or token_id == self.native_token and token.id not in self.trading_dict:
                     self.trading_dict[token.id] = token
                     self.logging.info(f"trading dict: {self.trading_dict}")
                 self.logging.info(f"Updated token: {token}\n ROI: {(token.initial_price - current_price) / token.initial_price}\n strikes: {token.strikes}.")
@@ -178,13 +178,14 @@ class TradingBot:
             print(e)
         return None
 
-    def swap_all_to_stable(self, last_pulse):
+    def swap_all_to_stable(self, chain_id):
+        last_pulse = self.check_last_pulse(chain_id)
         for address, balance in last_pulse.items():
+            balance = int(balance)
             if address != self.native_token and address != self.stable_token:
                 self.swap_token_for_stable(address, balance)
-            elif address != self.stable_token:
-                self.swap_token_for_stable(address, 0.7*balance)
-
+            elif address != self.stable_token and address == self.native_token:
+                self.swap_token_for_stable(address, int(0.7*balance))
 
         logging.info("swap all function activated")
 
@@ -197,7 +198,7 @@ class TradingBot:
             time.sleep(1)
             native = self.tokens_per_chain[chain_name].find_token(self.native_token)
             if native.strikes > 4 or native.score < 0:
-                self.swap_all_to_stable(last_pulse)
+                self.swap_all_to_stable(chain_id)
                 self.trading_dict = {}
                 time.sleep(self.init_interval * 3)
                 # missing logic (swap from stable to native and continue trading)
