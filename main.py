@@ -180,12 +180,15 @@ class TradingBot:
 
     def swap_all_to_stable(self, chain_id):
         last_pulse = self.check_last_pulse(chain_id)
+        time.sleep(1)
         for address, balance in last_pulse.items():
             balance = int(balance)
             if address != self.native_token and address != self.stable_token:
                 self.swap_token_for_stable(address, balance)
+                time.sleep(1)
             elif address != self.stable_token and address == self.native_token:
                 self.swap_token_for_stable(address, int(0.7*balance))
+                time.sleep(1)
 
         logging.info("swap all function activated")
 
