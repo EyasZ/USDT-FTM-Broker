@@ -29,7 +29,7 @@ class OneInchAPI:
         value_loss = (amount - int(self.reverse_swap_rate(address, val_in_token)['price'])) / amount
         self.logging.info(f"swap value loss for token {address} = {value_loss}")
         time.sleep(1)
-        if value_loss > (0.8/100):
+        if value_loss > (0.8 / 100):
             return False
         try:
             buy_hash = self.swap_tokens(self.wallet_address, self.private_key, self.native_token, address, amount)
@@ -40,7 +40,8 @@ class OneInchAPI:
                     time.sleep(1)
                     balance = self.check_wallet_assets()[address]
                     time.sleep(1)
-                    sell_hash = self.swap_tokens(self.wallet_address, self.private_key, address, self.native_token, balance)
+                    sell_hash = self.swap_tokens(self.wallet_address, self.private_key, address, self.native_token,
+                                                 balance)
                     if sell_hash:
                         sell_receipt = web3_instance.eth.wait_for_transaction_receipt(sell_hash)
                         if sell_receipt.status == 1:
@@ -92,7 +93,7 @@ class OneInchAPI:
         return f"OneInchAPI(api_key={self.api_key})"
 
     def reverse_swap_rate(self, from_token_address: str, amount: int,
-                          to_token_address: str = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',) -> dict:
+                          to_token_address: str = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', ) -> dict:
         """
         Retrieves the swap rate for a given pair of tokens.
 
@@ -122,6 +123,7 @@ class OneInchAPI:
                 return None
         except Exception as e:
             return None
+
     def get_swap_rate(self, to_token_address: str,
                       from_token_address: str = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
                       amount: int = 10 ** 18) -> dict:
@@ -153,7 +155,7 @@ class OneInchAPI:
             else:
                 return None
         except Exception as e:
-            self.logging.erro(f"error getting swap rate: {e}")
+            self.logging.error(f"error getting swap rate: {e}")
             return None
 
     def get_chain_pairs_prices(self) -> str:

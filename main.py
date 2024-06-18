@@ -16,6 +16,8 @@ class TradingBot:
         self.interval = interval
         self.init_interval = interval * 10
         self.logging = None
+        self.swapped_to_stable_flag = False
+        self.swap_to_stable_order = False
         self.stable_token = None
         mpmath.mp.dps = 50
         self.one_inch_api = OneInchAPI(secrets_json)
@@ -32,6 +34,7 @@ class TradingBot:
         self.wallet_address = secrets_json['one_inch']['wallet_address']
         self.private_key = secrets_json['one_inch']['wallet_pk']
         self.manage_dict_flag = False
+        self.sleep_count = 1
 
     def configure_logging(self):
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='history.log', filemode='w')
@@ -48,14 +51,26 @@ class TradingBot:
             self.initialize_tokens(chain_name, chain_id)
             self.logging.info("Finished tokens initialization")
             time.sleep(self.init_interval)
-            while len(self.trading_dict) < 5:
+            while len(self.trading_dict) < 5 or self.tokens_per_chain[chain_name].find_token(self.native_token).score < 3 * self.sleep_count :
+                while len(self.trading_dict) > 6:
+                    min_score_token_id = min(self.trading_dict, key=lambda k: self.trading_dict[k].score)
+                    # Pop the key-value pair with the minimum score
+                    self.trading_dict.pop(min_score_token_id)
                 self.logging.info(f"Processing {chain_name} with chain ID {chain_id}")
-                self.logging.info(f"Iteration self.counter: {self.counter}")
+                self.logging.info(f"Iteration counter: {self.counter}\nSleep Counter: {self.sleep_count-1}")
                 self.update_token_scores(chain_name, chain_id)
                 self.counter += 1
                 time.sleep(self.init_interval)
             self.manage_trading_dict(chain_name, chain_id)
-
+            if self.swapped_to_stable_flag:
+                # sleep for 4 hours
+                self.trading_dict = {}
+                self.sleep_count += 1
+                self.manage_dict_flag = False
+                self.tokens_per_chain[chain_name].find_token(self.native_token).score = self.sleep_count
+                self.tokens_per_chain[chain_name].find_token(self.native_token).strikes = 0
+                self.swapped_to_stable_flag = False
+                time.sleep(self.init_interval * 48)
 
     def initialize_tokens(self, chain_name, chain_id):
         if self.one_inch_api.end_point is None:
@@ -82,7 +97,7 @@ class TradingBot:
                     token = Token((token_id, chain_id, token_name, token_symbol, decimals), initial_score, current_price)
                     self.tokens_per_chain[chain_name].insert_token(token)  # Insert new token into the tree
                     self.logging.info(f"Inserted {token}")
-            elif token_id == self.native_token:
+            elif token is None and token_id == self.native_token:
                 current_price_info = self.one_inch_api.get_swap_rate(token_id, self.stable_token)
                 time.sleep(1)
                 if current_price_info and 'price' in current_price_info:
@@ -130,7 +145,7 @@ class TradingBot:
             adjustment_factor = percentage_change * penalty_multiplier
 
         # Cap the adjustment factor to avoid excessively high scores
-        adjustment_factor = max(min(adjustment_factor, 2), -2)
+        adjustment_factor = max(min(adjustment_factor, self.sleep_count), -1 * self.sleep_count)
 
         return adjustment_factor
 
@@ -158,22 +173,21 @@ class TradingBot:
                 adjustment_factor = self.calculate_adjustment_factor(price_difference * -1, token.last_price)
                 new_score = token.score + adjustment_factor
                 self.tokens_per_chain[chain_name].update_token(token.id, new_score, current_price, token.strikes)
-                if token_id == self.native_token and new_score < 0.5:
-                    self.logging.warning(f"native token score is low, score = {new_score}")
-                    time.sleep(1)
-                    self.swap_all_to_stable(chain_id, chain_name)
-                    return
                 if price_difference > 0:
                     token.strikes += 1
                 elif price_difference < 0 < token.strikes:
                     token.strikes -= 2
                 if token.id in self.trading_dict and token.strikes > 2 or token.id in self.trading_dict and token.score < 0.9:
                     self.trading_dict.pop(token.id)
-                elif (token.score > 3 and token.id not in self.trading_dict and token.strikes < 4 or token_id == self.native_token
+                elif (token.score > 2 * self.sleep_count and token.id not in self.trading_dict and token.strikes < 4 or token_id == self.native_token
                       and token.id not in self.trading_dict and token.score > 0.5):
                     self.trading_dict[token.id] = token
                     self.logging.info(f"trading dict: {self.trading_dict}")
                 self.logging.info(f"Updated token: {token}\n ROI: {(token.initial_price - current_price) / token.initial_price}\n strikes: {token.strikes}.")
+                if token_id == self.native_token and new_score < 0:
+                    self.logging.warning(f"native token score is low, score = {new_score}")
+                    time.sleep(1)
+                    self.swap_to_stable_order = True
 
     def check_last_pulse(self, chain_id):
         try:
@@ -194,13 +208,9 @@ class TradingBot:
             elif address != self.stable_token and address == self.native_token and balance > ((10**18)*100):
                 self.swap_token_for_stable(address, int(0.9*balance))
                 time.sleep(1)
-        self.trading_dict = {}
-        self.manage_dict_flag = False
-        self.tokens_per_chain[chain_name].find_token(self.native_token).score = 1
-        self.tokens_per_chain[chain_name].find_token(self.native_token).strikes = 1
+        self.swapped_to_stable_flag = True
+        self.swap_to_stable_order = False
         logging.info("swap all function activated")
-        # sleep for 4 hours
-        time.sleep(self.init_interval * 48)
 
     def manage_trading_dict(self, chain_name, chain_id):
         time.sleep(1)
@@ -253,8 +263,9 @@ class TradingBot:
                             time.sleep(1)
 
             self.update_token_scores(chain_name, chain_id)
+            if self.swap_to_stable_order:
+                self.swap_all_to_stable(chain_id, chain_name)
             time.sleep(self.init_interval * 2)
-        self.swap_all_to_stable(chain_id, chain_name)
 
     def bridge(self, token_id, amount):
         self.logging.info(f"Dummy swap {token_id} for native currency with amount {amount}")
