@@ -187,7 +187,7 @@ class TradingBot:
                 self.swap_token_for_stable(address, balance)
                 time.sleep(1)
             elif address != self.stable_token and address == self.native_token:
-                self.swap_token_for_stable(address, int(0.7*balance))
+                self.swap_token_for_stable(address, int(0.9*balance))
                 time.sleep(1)
 
         logging.info("swap all function activated")
@@ -217,11 +217,11 @@ class TradingBot:
                 for address, balance in last_pulse.items():
                     token = self.trading_dict.get(address)
                     if token or address == self.native_token:
+                        if address == self.native_token:
+                            token.tested = True
                         continue
                     else:
                         # If the address is in last_pulse but not in trading_dict, mark for selling
-                        self.one_inch_api.approve_token(address)
-                        time.sleep(1)
                         tx_hash = self.swap_token_for_native(token_address=address, amount=balance)
                 last_pulse = self.check_last_pulse(chain_id)
                 time.sleep(1)
@@ -238,6 +238,8 @@ class TradingBot:
                         if token.white_listed and token.id != self.native_token:
                             tx_hash = self.swap_native_for_token(address, token_budget)
                             time.sleep(1)
+                        elif not token.white_listed and token.id != self.native_token:
+                            self.trading_dict.pop(token.id)
             self.update_token_scores(chain_name, chain_id)
             time.sleep(self.init_interval * 3)
 
@@ -259,7 +261,7 @@ class TradingBot:
 
     def swap_token_for_stable(self, token_address, amount):
         tx_hash = self.one_inch_api.swap_tokens(self.wallet_address, self.private_key,
-                                                self.stable_token, token_address, amount)
+                                                token_address, self.stable_token, amount)
         self.logging.info(f"swapped {token_address} with stable currency - amount: {amount}\n"
                           f"transaction hash = {tx_hash}")
         return tx_hash

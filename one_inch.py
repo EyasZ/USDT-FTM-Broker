@@ -23,9 +23,13 @@ class OneInchAPI:
     def whitelist_token(self, address):
         web3_instance = Web3Instance.get_instance(self.end_point).web3
         amount = web3_instance.to_wei(3, 'ether')
-        value_loss = (amount - self.reverse_swap_rate(address, amount)['price']) / amount
         time.sleep(1)
-        if value_loss > 0.02:
+        val_in_token = int(self.get_swap_rate(address, self.native_token, amount)['price'])
+        time.sleep(1)
+        value_loss = (amount - int(self.reverse_swap_rate(address, val_in_token)['price'])) / amount
+        self.logging.info(f"swap value loss for token {address} = {value_loss}")
+        time.sleep(1)
+        if value_loss > (0.5/100):
             return False
         try:
             buy_hash = self.swap_tokens(self.wallet_address, self.private_key, self.native_token, address, amount)
@@ -87,7 +91,7 @@ class OneInchAPI:
     def __str__(self) -> str:
         return f"OneInchAPI(api_key={self.api_key})"
 
-    def reverse_swap_rate(self, from_token_address: str, amount: int ,
+    def reverse_swap_rate(self, from_token_address: str, amount: int,
                           to_token_address: str = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',) -> dict:
         """
         Retrieves the swap rate for a given pair of tokens.
@@ -149,6 +153,7 @@ class OneInchAPI:
             else:
                 return None
         except Exception as e:
+            self.logging.erro(e)
             return None
 
     def get_chain_pairs_prices(self) -> str:
