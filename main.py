@@ -166,8 +166,8 @@ class TradingBot:
                     token.strikes = 0
                 if token.id in self.trading_dict and token.strikes > 2 or token.id in self.trading_dict and token.score < 0.9:
                     self.trading_dict.pop(token.id)
-                elif (token.score > 3 and token.id not in self.trading_dict or token_id == self.native_token
-                      and token.id not in self.trading_dict and token.score > 1):
+                elif (token.score > 3 and token.id not in self.trading_dict and token.strikes < 4 or token_id == self.native_token
+                      and token.id not in self.trading_dict and token.score > 0.5):
                     self.trading_dict[token.id] = token
                     self.logging.info(f"trading dict: {self.trading_dict}")
                 self.logging.info(f"Updated token: {token}\n ROI: {(token.initial_price - current_price) / token.initial_price}\n strikes: {token.strikes}.")
