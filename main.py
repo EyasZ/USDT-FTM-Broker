@@ -157,6 +157,7 @@ class TradingBot:
                 new_score = token.score + adjustment_factor
                 self.tokens_per_chain[chain_name].update_token(token.id, new_score, current_price, token.strikes)
                 if token_id == self.native_token and new_score < 0.5:
+                    self.logging.warning(f"native token score is low, score = {new_score}")
                     self.swap_all_to_stable(chain_id, chain_name)
                     return
                 if price_difference > 0:
@@ -187,7 +188,7 @@ class TradingBot:
             if address != self.native_token and address != self.stable_token:
                 self.swap_token_for_stable(address, balance)
                 time.sleep(1)
-            elif address != self.stable_token and address == self.native_token and balance > ((10**18)*2):
+            elif address != self.stable_token and address == self.native_token and balance > (10**21):
                 self.swap_token_for_stable(address, int(0.9*balance))
                 time.sleep(1)
         self.trading_dict = {}
@@ -207,6 +208,7 @@ class TradingBot:
             time.sleep(1)
             native = self.tokens_per_chain[chain_name].find_token(self.native_token)
             if native.strikes > 4 or native.score < 0.5 or self.native_token not in self.trading_dict:
+                self.logging.warning("native token probably wasn't in trading dict(trading_dict_manager)")
                 self.swap_all_to_stable(chain_id, chain_name)
                 return
 
