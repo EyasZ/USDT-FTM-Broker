@@ -196,8 +196,8 @@ class TradingBot:
         self.tokens_per_chain[chain_name].find_token(self.native_token).score = 1
         self.tokens_per_chain[chain_name].find_token(self.native_token).strikes = 1
         logging.info("swap all function activated")
-        # sleep for 12 hours
-        time.sleep(self.init_interval * 144)
+        # sleep for 4 hours
+        time.sleep(self.init_interval * 48)
 
     def manage_trading_dict(self, chain_name, chain_id):
         time.sleep(1)
