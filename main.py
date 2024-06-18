@@ -160,6 +160,7 @@ class TradingBot:
                 self.tokens_per_chain[chain_name].update_token(token.id, new_score, current_price, token.strikes)
                 if token_id == self.native_token and new_score < 0.5:
                     self.logging.warning(f"native token score is low, score = {new_score}")
+                    time.sleep(1)
                     self.swap_all_to_stable(chain_id, chain_name)
                     return
                 if price_difference > 0:

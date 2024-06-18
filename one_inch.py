@@ -153,7 +153,7 @@ class OneInchAPI:
             else:
                 return None
         except Exception as e:
-            self.logging.erro(e)
+            self.logging.erro(f"error getting swap rate: {e}")
             return None
 
     def get_chain_pairs_prices(self) -> str:
@@ -236,7 +236,7 @@ class OneInchAPI:
             'to': web3_instance.to_checksum_address(approval_data['to']),
             'data': approval_data['data'],
             'gas': 200000,
-            'gasPrice': web3_instance.to_wei('50', 'gwei'),
+            'gasPrice': web3_instance.to_wei('80', 'gwei'),
             'nonce': web3_instance.eth.get_transaction_count(from_address, 'pending'),
             'chainId': self.chain_id
         }
@@ -258,7 +258,8 @@ class OneInchAPI:
         try:
             self.approve_token(from_token_address)
         except Exception as e:
-            self.logging.error(e)
+            self.logging.error(f"error approving allowance{e}")
+
         time.sleep(1)
 
         # 1inch API endpoint for swap
