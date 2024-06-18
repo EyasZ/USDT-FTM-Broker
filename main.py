@@ -7,6 +7,7 @@ from one_inch import OneInchAPI  # Ensure this is correctly implemented
 from objects import Chain, Token, TokenBinaryTree
 import sys
 from chainlink import ChainlinkDataFetcher
+import mpmath
 
 class TradingBot:
     def __init__(self, secrets_json, budget=0, chain_ids=None, interval=30, api_key="YOUR_API_KEY"):
@@ -16,6 +17,7 @@ class TradingBot:
         self.init_interval = interval * 10
         self.logging = None
         self.stable_token = None
+        mpmath.mp.dps = 50
         self.one_inch_api = OneInchAPI(secrets_json)
         self.chain_link = None
         self.configure_logging()
@@ -107,7 +109,7 @@ class TradingBot:
             return 0  # Avoid division by zero if last_price is not initialized.
 
         # Calculate the percentage change
-        percentage_change = (price_difference / last_price) * 100
+        percentage_change = mpmath.mpf(mpmath.mpf(price_difference / last_price) * 100)
 
         # Initialize the adjustment factor
         adjustment_factor = 0
@@ -236,15 +238,19 @@ class TradingBot:
                 for address, token in self.trading_dict.items():
                     if address not in pulse_addresses:
                         if not token.tested and token.id != self.native_token:
+                            if token.id == self.native_token:
+                                token.tested = True
+                                token.white_listed = True
                             token.tested = True
                             token.white_listed = self.one_inch_api.whitelist_token(address)
                             logging.info(f"token {address} whitelist status: {token.white_listed}")
                             time.sleep(1)
+                        if token.tested and not token.white_listed:
+                            continue
                         if token.white_listed and token.id != self.native_token:
                             tx_hash = self.swap_native_for_token(address, token_budget)
                             time.sleep(1)
-                        elif not token.white_listed and token.id != self.native_token:
-                            self.trading_dict.pop(token.id)
+
             self.update_token_scores(chain_name, chain_id)
             time.sleep(self.init_interval * 2)
         self.swap_all_to_stable(chain_id, chain_name)
