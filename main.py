@@ -188,7 +188,7 @@ class TradingBot:
             if address != self.native_token and address != self.stable_token:
                 self.swap_token_for_stable(address, balance)
                 time.sleep(1)
-            elif address != self.stable_token and address == self.native_token and balance > (10**21):
+            elif address != self.stable_token and address == self.native_token and balance > ((10**18)*100):
                 self.swap_token_for_stable(address, int(0.9*balance))
                 time.sleep(1)
         self.trading_dict = {}
