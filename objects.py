@@ -1,5 +1,9 @@
 import logging
 from typing import Tuple, Dict
+import mpmath
+
+mpmath.mp.dps = 50
+
 
 class TradeSignal:
     """Represents a trading signal with associated data."""
@@ -27,7 +31,7 @@ class Token:
         if not data:
             raise ValueError("Initialization data cannot be empty")
         self.id, self.chain_id, self.name, self.symbol, self.decimals = data
-        self.score = score
+        self.score = mpmath.mpf(score)
         self.initial_price = last_price
         self.last_price = last_price  # Now accepts last_price during initialization
         self.strikes = 0

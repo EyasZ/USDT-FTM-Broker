@@ -166,7 +166,7 @@ class TradingBot:
                 if price_difference > 0:
                     token.strikes += 1
                 elif price_difference < 0 < token.strikes:
-                    token.strikes = 0
+                    token.strikes -= 2
                 if token.id in self.trading_dict and token.strikes > 2 or token.id in self.trading_dict and token.score < 0.9:
                     self.trading_dict.pop(token.id)
                 elif (token.score > 3 and token.id not in self.trading_dict and token.strikes < 4 or token_id == self.native_token
@@ -205,7 +205,7 @@ class TradingBot:
     def manage_trading_dict(self, chain_name, chain_id):
         time.sleep(1)
         self.manage_dict_flag = True
-        while len(self.trading_dict) > 2:
+        while len({address: token for address, token in self.trading_dict.items() if ((token.tested and token.white_listed) or not token.tested)}) > 2:
             last_pulse = self.check_last_pulse(chain_id)
             logging.info(last_pulse)
             time.sleep(1)

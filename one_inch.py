@@ -29,7 +29,7 @@ class OneInchAPI:
         value_loss = (amount - int(self.reverse_swap_rate(address, val_in_token)['price'])) / amount
         self.logging.info(f"swap value loss for token {address} = {value_loss}")
         time.sleep(1)
-        if value_loss > (0.5/100):
+        if value_loss > (0.8/100):
             return False
         try:
             buy_hash = self.swap_tokens(self.wallet_address, self.private_key, self.native_token, address, amount)
