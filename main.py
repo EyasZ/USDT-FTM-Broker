@@ -246,7 +246,7 @@ class TradingBot:
                         elif not token.white_listed and token.id != self.native_token:
                             self.trading_dict.pop(token.id)
             self.update_token_scores(chain_name, chain_id)
-            time.sleep(self.init_interval * 3)
+            time.sleep(self.init_interval * 2)
         self.swap_all_to_stable(chain_id, chain_name)
 
     def bridge(self, token_id, amount):
