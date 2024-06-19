@@ -268,6 +268,7 @@ class TradingBot:
             self.update_token_scores(chain_name, chain_id)
             if self.swap_to_stable_order:
                 self.swap_all_to_stable(chain_id, chain_name)
+                return
             time.sleep(self.init_interval * 2)
             if len({address: token for address, token in self.trading_dict.items() if ((token.tested and token.white_listed) or not token.tested)}) == 1:
                 break
