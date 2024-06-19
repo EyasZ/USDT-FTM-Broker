@@ -59,6 +59,9 @@ class TradingBot:
                 self.logging.info(f"Processing {chain_name} with chain ID {chain_id}")
                 self.logging.info(f"Iteration counter: {self.counter}\nSleep Counter: {self.sleep_count-1}")
                 self.update_token_scores(chain_name, chain_id)
+                if self.swap_to_stable_order:
+                    self.swap_all_to_stable(chain_id, chain_name)
+                    break
                 self.counter += 1
                 time.sleep(self.init_interval)
             self.manage_trading_dict(chain_name, chain_id)
@@ -180,11 +183,11 @@ class TradingBot:
                 if token.id in self.trading_dict and token.strikes > 2 or token.id in self.trading_dict and token.score < 0.9:
                     self.trading_dict.pop(token.id)
                 elif (token.score > 2 * self.sleep_count and token.id not in self.trading_dict and token.strikes < 4 or token_id == self.native_token
-                      and token.id not in self.trading_dict and token.score > 0.5):
+                      and token.id not in self.trading_dict and token.score > 0.5 * self.sleep_count):
                     self.trading_dict[token.id] = token
                     self.logging.info(f"trading dict: {self.trading_dict}")
                 self.logging.info(f"Updated token: {token}\n ROI: {(token.initial_price - current_price) / token.initial_price}\n strikes: {token.strikes}.")
-                if token_id == self.native_token and new_score < 0:
+                if token_id == self.native_token and new_score < 0.5 * self.sleep_count:
                     self.logging.warning(f"native token score is low, score = {new_score}")
                     time.sleep(1)
                     self.swap_to_stable_order = True
