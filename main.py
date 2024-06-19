@@ -215,7 +215,7 @@ class TradingBot:
     def manage_trading_dict(self, chain_name, chain_id):
         time.sleep(1)
         self.manage_dict_flag = True
-        while len({address: token for address, token in self.trading_dict.items() if ((token.tested and token.white_listed) or not token.tested)}) > 2:
+        while True:
             last_pulse = self.check_last_pulse(chain_id)
             logging.info(last_pulse)
             time.sleep(1)
@@ -241,31 +241,36 @@ class TradingBot:
                     else:
                         # If the address is in last_pulse but not in trading_dict, mark for selling
                         tx_hash = self.swap_token_for_native(token_address=address, amount=balance)
-                last_pulse = self.check_last_pulse(chain_id)
-                time.sleep(1)
-                native_balance = int(last_pulse[self.native_token])
-                token_budget = str(int((0.7*native_balance)/len(self.trading_dict)))
                 # Check for tokens in trading_dict that are not in last_pulse (new tokens to buy)
                 for address, token in self.trading_dict.items():
                     if address not in pulse_addresses:
                         if not token.tested and token.id != self.native_token:
                             if token.id == self.native_token:
-                                token.tested = True
-                                token.white_listed = True
-                            token.tested = True
-                            token.white_listed = self.one_inch_api.whitelist_token(address)
-                            logging.info(f"token {address} whitelist status: {token.white_listed}")
-                            time.sleep(1)
+                                self.trading_dict[token.id].tested = True
+                                self.trading_dict[token.id].white_listed = True
+                            else:
+                                self.trading_dict[token.id].tested = True
+                                self.trading_dict[token.id].white_listed = self.one_inch_api.whitelist_token(address)
+                                logging.info(f"token {address} whitelist status: {token.white_listed}")
+                                time.sleep(1)
                         if token.tested and not token.white_listed:
                             continue
-                        if token.white_listed and token.id != self.native_token:
-                            tx_hash = self.swap_native_for_token(address, token_budget)
-                            time.sleep(1)
+                white_listed_tokens = {address: token for address, token in self.trading_dict.items() if (token.tested and token.white_listed)}
+                last_pulse = self.check_last_pulse(chain_id)
+                time.sleep(1)
+                native_balance = int(last_pulse[self.native_token])
+                token_budget = str(int((0.7 * native_balance) / len(white_listed_tokens) - 1))
+                for address, token in white_listed_tokens.items():
+                    if token.id != self.native_token:
+                        tx_hash = self.swap_native_for_token(address, token_budget)
+                        time.sleep(1)
 
             self.update_token_scores(chain_name, chain_id)
             if self.swap_to_stable_order:
                 self.swap_all_to_stable(chain_id, chain_name)
             time.sleep(self.init_interval * 2)
+            if len({address: token for address, token in self.trading_dict.items() if ((token.tested and token.white_listed) or not token.tested)}) == 1:
+                break
 
     def bridge(self, token_id, amount):
         self.logging.info(f"Dummy swap {token_id} for native currency with amount {amount}")
